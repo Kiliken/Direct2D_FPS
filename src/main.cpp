@@ -1,19 +1,39 @@
 
-#define SDL_MAIN_USE_CALLBACKS 1  /* use the callbacks instead of main() */
+#define SDL_MAIN_USE_CALLBACKS 1 /* use the callbacks instead of main() */
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+#include <Windows.h>
+#include <d2d1.h>
 
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
+static ID2D1Factory *pFactory = NULL;
+static ID2D1HwndRenderTarget *pRenderTarget = NULL;
 
 /* This function runs once at startup. */
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
     /* Create the window */
-    if (!SDL_CreateWindowAndRenderer("D2DFPS", 800, 600, SDL_WINDOW_ALWAYS_ON_TOP, &window, &renderer)) {
+    if (!SDL_CreateWindowAndRenderer("D2DFPS", 800, 600, SDL_WINDOW_ALWAYS_ON_TOP, &window, &renderer))
+    {
         SDL_Log("Couldn't create window and renderer: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
+    HWND hwnd = (HWND)SDL_GetPointerProperty(SDL_GetWindowProperties(window),
+                                             SDL_PROP_WINDOW_WIN32_HWND_POINTER,
+                                             NULL);
+
+    D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &pFactory);
+
+    RECT rc;
+    GetClientRect(hwnd, &rc);
+
+    pFactory->CreateHwndRenderTarget(
+        D2D1::RenderTargetProperties(),
+        D2D1::HwndRenderTargetProperties(hwnd,
+                                         D2D1::SizeU(rc.right - rc.left, rc.bottom - rc.top)),
+        &pRenderTarget);
+
     return SDL_APP_CONTINUE;
 }
 
@@ -21,8 +41,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
     if (event->type == SDL_EVENT_KEY_DOWN ||
-        event->type == SDL_EVENT_QUIT) {
-        return SDL_APP_SUCCESS;  /* end the program, reporting success to the OS. */
+        event->type == SDL_EVENT_QUIT)
+    {
+        return SDL_APP_SUCCESS; /* end the program, reporting success to the OS. */
     }
     return SDL_APP_CONTINUE;
 }
@@ -30,23 +51,67 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 /* This function runs once per frame, and is the heart of the program. */
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
-    const char *message = "Hello World!";
-    int w = 0, h = 0;
-    float x, y;
-    const float scale = 4.0f;
+    pRenderTarget->BeginDraw();
 
-    /* Center the message and scale it up */
-    SDL_GetRenderOutputSize(renderer, &w, &h);
-    SDL_SetRenderScale(renderer, scale, scale);
-    x = ((w / scale) - SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE * SDL_strlen(message)) / 2;
-    y = ((h / scale) - SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE) / 2;
+        pRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
 
-    /* Draw the message */
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-    SDL_RenderClear(renderer);
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-    SDL_RenderDebugText(renderer, x, y, message);
-    SDL_RenderPresent(renderer);
+        pRenderTarget->Clear(D2D1::ColorF(D2D1::ColorF::White));
+
+        D2D1_SIZE_F rtSize = pRenderTarget->GetSize();
+
+        // Draw a grid background.
+        int width = static_cast<int>(rtSize.width);
+        int height = static_cast<int>(rtSize.height);
+
+        ID2D1SolidColorBrush *pGridBrush = NULL;
+        pRenderTarget->CreateSolidColorBrush(
+        D2D1::ColorF(D2D1::ColorF(0.93f, 0.94f, 0.96f, 1.0f)),
+        &pGridBrush
+        );
+
+        for (int x = 0; x < width; x += 10)
+        {
+            pRenderTarget->DrawLine(
+                D2D1::Point2F(static_cast<FLOAT>(x), 0.0f),
+                D2D1::Point2F(static_cast<FLOAT>(x), rtSize.height),
+                 pGridBrush,
+                0.5f
+                );
+        }
+
+        for (int y = 0; y < height; y += 10)
+        {
+            pRenderTarget->DrawLine(
+                D2D1::Point2F(0.0f, static_cast<FLOAT>(y)),
+                D2D1::Point2F(rtSize.width, static_cast<FLOAT>(y)),
+                pGridBrush,
+                0.5f
+                );
+        }
+
+        // Draw two rectangles.
+        D2D1_RECT_F rectangle1 = D2D1::RectF(
+            rtSize.width/2 - 50.0f,
+            rtSize.height/2 - 50.0f,
+            rtSize.width/2 + 50.0f,
+            rtSize.height/2 + 50.0f
+            );
+
+        D2D1_RECT_F rectangle2 = D2D1::RectF(
+            rtSize.width/2 - 100.0f,
+            rtSize.height/2 - 100.0f,
+            rtSize.width/2 + 100.0f,
+            rtSize.height/2 + 100.0f
+            );
+
+
+        // Draw a filled rectangle.
+        pRenderTarget->FillRectangle(rectangle1, pGridBrush);
+
+        // Draw the outline of a rectangle.
+        pRenderTarget->DrawRectangle(rectangle2, pGridBrush);
+
+        pRenderTarget->EndDraw();
 
     return SDL_APP_CONTINUE;
 }
