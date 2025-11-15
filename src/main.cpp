@@ -9,6 +9,7 @@ static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
 static ID2D1Factory *pFactory = NULL;
 static ID2D1HwndRenderTarget *pRenderTarget = NULL;
+static D2D_POINT_2F playerPos =  {0,0};
 
 /* This function runs once at startup. */
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
@@ -40,17 +41,38 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 /* This function runs when a new event (mouse input, keypresses, etc) occurs. */
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
-    if (event->type == SDL_EVENT_KEY_DOWN ||
-        event->type == SDL_EVENT_QUIT)
+    if (event->type == SDL_EVENT_QUIT)
     {
         return SDL_APP_SUCCESS; /* end the program, reporting success to the OS. */
-    }
+    }    
+    
+    
+    
     return SDL_APP_CONTINUE;
 }
 
 /* This function runs once per frame, and is the heart of the program. */
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
+    const bool *key_states = SDL_GetKeyboardState(NULL);
+
+    /* (We're writing our code such that it sees both keys are pressed and cancels each other out!) */
+    if (key_states[SDL_SCANCODE_W]) {
+        playerPos.y -= 1.f;
+    }
+
+    if (key_states[SDL_SCANCODE_S]) {
+        playerPos.y += 1.f;
+    } 
+
+    if (key_states[SDL_SCANCODE_A]) {
+        playerPos.x -= 1.f;
+    } 
+
+    if (key_states[SDL_SCANCODE_D]) {
+        playerPos.x += 1.f;
+    }
+
     pRenderTarget->BeginDraw();
 
         pRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
@@ -62,6 +84,9 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         // Draw a grid background.
         int width = static_cast<int>(rtSize.width);
         int height = static_cast<int>(rtSize.height);
+
+        ID2D1SolidColorBrush* pBrush = NULL;
+        pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Red), &pBrush);
 
         ID2D1SolidColorBrush *pGridBrush = NULL;
         pRenderTarget->CreateSolidColorBrush(
@@ -104,12 +129,21 @@ SDL_AppResult SDL_AppIterate(void *appstate)
             rtSize.height/2 + 100.0f
             );
 
+            D2D1_RECT_F rectangle3 = D2D1::RectF(
+            playerPos.x,
+            playerPos.y,
+            playerPos.x + 50.0f,
+            playerPos.y + 50.0f
+            );
+
 
         // Draw a filled rectangle.
         pRenderTarget->FillRectangle(rectangle1, pGridBrush);
 
         // Draw the outline of a rectangle.
         pRenderTarget->DrawRectangle(rectangle2, pGridBrush);
+
+        pRenderTarget->FillRectangle(rectangle3, pBrush);
 
         pRenderTarget->EndDraw();
 
