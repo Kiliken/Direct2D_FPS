@@ -4,18 +4,20 @@
 #include <SDL3/SDL_main.h>
 #include <Windows.h>
 #include <d2d1.h>
+#include "Player.h"
 
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
 static ID2D1Factory *pFactory = NULL;
 static ID2D1HwndRenderTarget *pRenderTarget = NULL;
-static D2D_POINT_2F playerPos =  {0,0};
+static D2D_POINT_2F playerPos = {0, 0};
+static Player *player = NULL;
 
 /* This function runs once at startup. */
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
     /* Create the window */
-    if (!SDL_CreateWindowAndRenderer("D2DFPS", 800, 600, SDL_WINDOW_ALWAYS_ON_TOP, &window, &renderer))
+    if (!SDL_CreateWindowAndRenderer("D2DFPS", 1280, 720, SDL_WINDOW_ALWAYS_ON_TOP, &window, &renderer))
     {
         SDL_Log("Couldn't create window and renderer: %s", SDL_GetError());
         return SDL_APP_FAILURE;
@@ -35,6 +37,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
                                          D2D1::SizeU(rc.right - rc.left, rc.bottom - rc.top)),
         &pRenderTarget);
 
+    player = new Player(*pRenderTarget);
+
     return SDL_APP_CONTINUE;
 }
 
@@ -44,37 +48,50 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
     if (event->type == SDL_EVENT_QUIT)
     {
         return SDL_APP_SUCCESS; /* end the program, reporting success to the OS. */
-    }    
-    
-    
-    
+    }
+
     return SDL_APP_CONTINUE;
 }
 
 /* This function runs once per frame, and is the heart of the program. */
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
-    const bool *key_states = SDL_GetKeyboardState(NULL);
 
-    /* (We're writing our code such that it sees both keys are pressed and cancels each other out!) */
-    if (key_states[SDL_SCANCODE_W]) {
-        playerPos.y -= 1.f;
+    // Inputs
+    {
+        const bool *key_states = SDL_GetKeyboardState(NULL);
+
+        /* (We're writing our code such that it sees both keys are pressed and cancels each other out!) */
+        if (key_states[SDL_SCANCODE_W])
+        {
+            player->pos.y -= 1.f;
+        }
+
+        if (key_states[SDL_SCANCODE_S])
+        {
+            player->pos.y += 1.f;
+        }
+
+        if (key_states[SDL_SCANCODE_A])
+        {
+           player->pos.x -= 1.f;
+        }
+
+        if (key_states[SDL_SCANCODE_D])
+        {
+            player->pos.x += 1.f;
+        }
     }
 
-    if (key_states[SDL_SCANCODE_S]) {
-        playerPos.y += 1.f;
-    } 
+    //Update
 
-    if (key_states[SDL_SCANCODE_A]) {
-        playerPos.x -= 1.f;
-    } 
+    player->Update();
 
-    if (key_states[SDL_SCANCODE_D]) {
-        playerPos.x += 1.f;
-    }
 
+
+    //Draw
     pRenderTarget->BeginDraw();
-
+    {
         pRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
 
         pRenderTarget->Clear(D2D1::ColorF(D2D1::ColorF::White));
@@ -85,23 +102,19 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         int width = static_cast<int>(rtSize.width);
         int height = static_cast<int>(rtSize.height);
 
-        ID2D1SolidColorBrush* pBrush = NULL;
-        pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Red), &pBrush);
 
         ID2D1SolidColorBrush *pGridBrush = NULL;
         pRenderTarget->CreateSolidColorBrush(
-        D2D1::ColorF(D2D1::ColorF(0.93f, 0.94f, 0.96f, 1.0f)),
-        &pGridBrush
-        );
+            D2D1::ColorF(D2D1::ColorF(0.93f, 0.94f, 0.96f, 1.0f)),
+            &pGridBrush);
 
         for (int x = 0; x < width; x += 10)
         {
             pRenderTarget->DrawLine(
                 D2D1::Point2F(static_cast<FLOAT>(x), 0.0f),
                 D2D1::Point2F(static_cast<FLOAT>(x), rtSize.height),
-                 pGridBrush,
-                0.5f
-                );
+                pGridBrush,
+                0.5f);
         }
 
         for (int y = 0; y < height; y += 10)
@@ -110,31 +123,21 @@ SDL_AppResult SDL_AppIterate(void *appstate)
                 D2D1::Point2F(0.0f, static_cast<FLOAT>(y)),
                 D2D1::Point2F(rtSize.width, static_cast<FLOAT>(y)),
                 pGridBrush,
-                0.5f
-                );
+                0.5f);
         }
 
         // Draw two rectangles.
         D2D1_RECT_F rectangle1 = D2D1::RectF(
-            rtSize.width/2 - 50.0f,
-            rtSize.height/2 - 50.0f,
-            rtSize.width/2 + 50.0f,
-            rtSize.height/2 + 50.0f
-            );
+            rtSize.width / 2 - 50.0f,
+            rtSize.height / 2 - 50.0f,
+            rtSize.width / 2 + 50.0f,
+            rtSize.height / 2 + 50.0f);
 
         D2D1_RECT_F rectangle2 = D2D1::RectF(
-            rtSize.width/2 - 100.0f,
-            rtSize.height/2 - 100.0f,
-            rtSize.width/2 + 100.0f,
-            rtSize.height/2 + 100.0f
-            );
-
-            D2D1_RECT_F rectangle3 = D2D1::RectF(
-            playerPos.x,
-            playerPos.y,
-            playerPos.x + 50.0f,
-            playerPos.y + 50.0f
-            );
+            rtSize.width / 2 - 100.0f,
+            rtSize.height / 2 - 100.0f,
+            rtSize.width / 2 + 100.0f,
+            rtSize.height / 2 + 100.0f);
 
 
         // Draw a filled rectangle.
@@ -143,9 +146,9 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         // Draw the outline of a rectangle.
         pRenderTarget->DrawRectangle(rectangle2, pGridBrush);
 
-        pRenderTarget->FillRectangle(rectangle3, pBrush);
-
-        pRenderTarget->EndDraw();
+        player->Draw(*pRenderTarget);
+    }
+    pRenderTarget->EndDraw();
 
     return SDL_APP_CONTINUE;
 }
@@ -153,4 +156,5 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 /* This function runs once at shutdown. */
 void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
+    delete player;
 }

@@ -19,4 +19,3 @@ if %errorlevel% neq 0 (
 		cd build
 		App.exe
 )
-
