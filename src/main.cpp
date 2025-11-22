@@ -5,6 +5,8 @@
 #include <Windows.h>
 #include <d2d1.h>
 #include "Player.h"
+#include <unordered_map>
+
 
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
@@ -12,6 +14,14 @@ static ID2D1Factory *pFactory = NULL;
 static ID2D1HwndRenderTarget *pRenderTarget = NULL;
 static D2D_POINT_2F playerPos = {0, 0};
 static Player *player = NULL;
+
+
+D2D_POINT_2F RotatePoint(D2D_POINT_2F p, float value) {
+    D2D_POINT_2F ret;
+    ret.x = p.x * std::cos(value) - p.y * std::sin(value);
+    ret.y = p.x * std::sin(value) + p.y * std::cos(value);
+    return ret;
+}
 
 /* This function runs once at startup. */
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
@@ -53,6 +63,8 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
     return SDL_APP_CONTINUE;
 }
 
+
+
 /* This function runs once per frame, and is the heart of the program. */
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
@@ -64,22 +76,24 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         /* (We're writing our code such that it sees both keys are pressed and cancels each other out!) */
         if (key_states[SDL_SCANCODE_W])
         {
-            player->pos.y -= 1.f;
+            player->pos.x += player->facingDir.x;
+            player->pos.y += player->facingDir.y;
         }
 
         if (key_states[SDL_SCANCODE_S])
         {
-            player->pos.y += 1.f;
+            player->pos.x -= player->facingDir.x;
+            player->pos.y -= player->facingDir.y;
         }
 
         if (key_states[SDL_SCANCODE_A])
         {
-           player->pos.x -= 1.f;
+           player->facingDir = RotatePoint(player->facingDir, -0.01f);
         }
 
         if (key_states[SDL_SCANCODE_D])
         {
-            player->pos.x += 1.f;
+            player->facingDir = RotatePoint(player->facingDir, 0.01f);
         }
     }
 
