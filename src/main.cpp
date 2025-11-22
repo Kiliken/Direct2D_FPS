@@ -3,7 +3,9 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <Windows.h>
+#include <unordered_map>
 #include <d2d1.h>
+#include "raycastTest.h"
 #include "Player.h"
 
 static SDL_Window *window = NULL;
@@ -38,6 +40,14 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
         &pRenderTarget);
 
     player = new Player(*pRenderTarget);
+
+    if (!mapCheck())
+    {
+        fprintf(stderr, "Map is invalid!\n");
+        return SDL_APP_FAILURE;
+    }
+
+    
 
     return SDL_APP_CONTINUE;
 }
