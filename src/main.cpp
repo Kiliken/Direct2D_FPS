@@ -6,8 +6,12 @@
 #include <unordered_map>
 #include <d2d1.h>
 #include <cmath>
+#include <vector>
+#include <random>
+#include <algorithm>
 #include "raycastTest.h"
 #include "Player.h"
+#include "EnemyManager.h"
 
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
@@ -16,6 +20,7 @@ static ID2D1HwndRenderTarget *pRenderTarget = NULL;
 static Player *player = NULL;
 static Uint64 ticks_prev = 0;
 static float dt = 0.0f;
+static EnemyManager enemyManager;
 
 /* This function runs once at startup. */
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
@@ -43,6 +48,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 
     player = new Player();
     ticks_prev = SDL_GetTicks();
+    enemyManager.Reset();
 
     if (!mapCheck())
     {
@@ -123,6 +129,8 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     //Update
     player->Update();
 
+    enemyManager.Update(dt, player->pos);
+
 
 
     //Draw
@@ -151,6 +159,9 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         // raycasting
         const float fov = 60.0f * (3.14159265f / 180.0f); // 60 degrees
         const float planeHalf = std::tan(fov * 0.5f);
+        // depth buffer per column for occlusion
+        static std::vector<float> depthBuffer;
+        depthBuffer.assign(width, 1e30f);
 
         for (int x = 0; x < width; ++x)
         {
@@ -207,7 +218,16 @@ SDL_AppResult SDL_AppIterate(void *appstate)
                 D2D1::Point2F((FLOAT)x, (FLOAT)drawEnd),
                 wallBrush,
                 1.0f);
+
+            // store distance for occlusion
+            depthBuffer[x] = perpWallDist;
         }
+
+        // render enemies as simple billboards (red squares)
+        ID2D1SolidColorBrush *enemyBrush = NULL;
+        pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Red), &enemyBrush);
+        enemyManager.RenderBillboards(pRenderTarget, enemyBrush, depthBuffer, width, height, halfH, player->pos, player->angle, planeHalf);
+        if (enemyBrush) enemyBrush->Release();
 
         if (ceilBrush) ceilBrush->Release();
         if (floorBrush) floorBrush->Release();
