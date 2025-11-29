@@ -3,12 +3,14 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <Windows.h>
+#include <wincodec.h>
 #include <unordered_map>
 #include <d2d1.h>
 #include <cmath>
 #include "raycastTest.h"
 #include "Player.h"
 
+// Window Stuff
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
 static ID2D1Factory *pFactory = NULL;
@@ -16,6 +18,16 @@ static ID2D1HwndRenderTarget *pRenderTarget = NULL;
 static Player *player = NULL;
 static Uint64 ticks_prev = 0;
 static float dt = 0.0f;
+
+// Image Stuff
+D2D1_BITMAP_PROPERTIES bmpProps = D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
+SDL_Surface *wallbitmap = NULL;
+ID2D1Bitmap *wallTexture = NULL;
+
+// Brushes
+ID2D1SolidColorBrush *ceilBrush = NULL;
+ID2D1SolidColorBrush *floorBrush = NULL;
+ID2D1SolidColorBrush *wallBrush = NULL;
 
 /* This function runs once at startup. */
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
@@ -44,13 +56,21 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     player = new Player();
     ticks_prev = SDL_GetTicks();
 
+    pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.1f, 0.1f, 0.15f, 1.0f), &ceilBrush);
+    pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.2f, 0.2f, 0.22f, 1.0f), &floorBrush);
+    pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.9f, 0.9f, 0.9f, 1.0f), &wallBrush);
+
+    wallbitmap = SDL_LoadBMP("../Assets/walls.bmp");
+
+    //wallbitmap = SDL_ConvertSurface(wallbitmap, SDL_PIXELFORMAT_BGRA32);
+
+    //pRenderTarget->CreateBitmap(D2D1::SizeU(wallbitmap->w, wallbitmap->h), wallbitmap->pixels, wallbitmap->pitch, &bmpProps, &wallTexture);
+
     if (!mapCheck())
     {
         fprintf(stderr, "Map is invalid!\n");
         return SDL_APP_FAILURE;
     }
-
-    
 
     return SDL_APP_CONTINUE;
 }
@@ -89,43 +109,71 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     dt = (float)(now - ticks_prev) / 1000.0f;
     ticks_prev = now;
 
+    // movement relative to facing
+    D2D_POINT_2F forward = {std::cos(player->angle), std::sin(player->angle)};
+    D2D_POINT_2F right = {-std::sin(player->angle), std::cos(player->angle)};
+
+    D2D_POINT_2F desired = {0.0f, 0.0f};
+
     // Inputs
     {
         const bool *key_states = SDL_GetKeyboardState(NULL);
-        // movement relative to facing
-        D2D_POINT_2F forward = { std::cos(player->angle), std::sin(player->angle) };
-        D2D_POINT_2F right = { -std::sin(player->angle), std::cos(player->angle) };
 
-        D2D_POINT_2F desired = {0.0f, 0.0f};
-        if (key_states[SDL_SCANCODE_W]) { desired.x += forward.x; desired.y += forward.y; }
-        if (key_states[SDL_SCANCODE_S]) { desired.x -= forward.x; desired.y -= forward.y; }
-        if (key_states[SDL_SCANCODE_A]) { desired.x -= right.x;   desired.y -= right.y; }
-        if (key_states[SDL_SCANCODE_D]) { desired.x += right.x;   desired.y += right.y; }
-
-        // normalize desired
-        float len = std::sqrt(desired.x*desired.x + desired.y*desired.y);
-        if (len > 0.0001f) { desired.x /= len; desired.y /= len; }
-
-        D2D_POINT_2F nextPos = { player->pos.x + desired.x * player->moveSpeed * dt,
-                                 player->pos.y + desired.y * player->moveSpeed * dt };
-        // collision: player radius ~0.25 tiles
-        D2D_POINT_2F size = {0.5f, 0.5f};
-        if (canMove(nextPos, size)) {
-            player->pos = nextPos;
+        if (key_states[SDL_SCANCODE_W])
+        {
+            desired.x += forward.x;
+            desired.y += forward.y;
+        }
+        if (key_states[SDL_SCANCODE_S])
+        {
+            desired.x -= forward.x;
+            desired.y -= forward.y;
+        }
+        if (key_states[SDL_SCANCODE_A])
+        {
+            desired.x -= right.x;
+            desired.y -= right.y;
+        }
+        if (key_states[SDL_SCANCODE_D])
+        {
+            desired.x += right.x;
+            desired.y += right.y;
         }
 
         // optional keyboard rotation
-        if (key_states[SDL_SCANCODE_Q]) { player->angle -= player->rotSpeed * dt; }
-        if (key_states[SDL_SCANCODE_E]) { player->angle += player->rotSpeed * dt; }
-        if (key_states[SDL_SCANCODE_ESCAPE]) { return SDL_APP_SUCCESS; }
+        if (key_states[SDL_SCANCODE_Q])
+        {
+            player->angle -= player->rotSpeed * dt;
+        }
+        if (key_states[SDL_SCANCODE_E])
+        {
+            player->angle += player->rotSpeed * dt;
+        }
+        if (key_states[SDL_SCANCODE_ESCAPE])
+        {
+            return SDL_APP_SUCCESS;
+        }
     }
 
-    //Update
-    player->Update();
+    // Update
+    // normalize desired
+    float len = std::sqrt(desired.x * desired.x + desired.y * desired.y);
+    if (len > 0.0001f)
+    {
+        desired.x /= len;
+        desired.y /= len;
+    }
 
+    D2D_POINT_2F nextPos = {player->pos.x + desired.x * player->moveSpeed * dt,
+                            player->pos.y + desired.y * player->moveSpeed * dt};
+    // collision: player radius ~0.25 tiles
+    D2D_POINT_2F size = {0.35f, 0.35f};
+    if (canMove(nextPos, size))
+    {
+        player->pos = nextPos;
+    }
 
-
-    //Draw
+    // Draw
     pRenderTarget->BeginDraw();
     {
         pRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
@@ -134,14 +182,6 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         D2D1_SIZE_F rtSize = pRenderTarget->GetSize();
         const int width = static_cast<int>(rtSize.width);
         const int height = static_cast<int>(rtSize.height);
-
-        // brushes
-        ID2D1SolidColorBrush *ceilBrush = NULL;
-        ID2D1SolidColorBrush *floorBrush = NULL;
-        ID2D1SolidColorBrush *wallBrush = NULL;
-        pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.1f, 0.1f, 0.15f, 1.0f), &ceilBrush);
-        pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.2f, 0.2f, 0.22f, 1.0f), &floorBrush);
-        pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.9f, 0.9f, 0.9f, 1.0f), &wallBrush);
 
         // draw ceiling and floor as two rects
         const float halfH = rtSize.height * 0.5f;
@@ -159,8 +199,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
             // ray direction
             D2D_POINT_2F dir = {
                 std::cos(player->angle) + planeHalf * camX * (-std::sin(player->angle)),
-                std::sin(player->angle) + planeHalf * camX * ( std::cos(player->angle))
-            };
+                std::sin(player->angle) + planeHalf * camX * (std::cos(player->angle))};
 
             // DDA setup
             int mapX = (int)player->pos.x;
@@ -173,45 +212,91 @@ SDL_AppResult SDL_AppIterate(void *appstate)
             int stepY;
             int hit = 0;
             int side = 0;
+            int tile = 0;
 
-            if (dir.x < 0) { stepX = -1; sideDistX = (player->pos.x - mapX) * deltaDistX; }
-            else { stepX = 1; sideDistX = (mapX + 1.0f - player->pos.x) * deltaDistX; }
-            if (dir.y < 0) { stepY = -1; sideDistY = (player->pos.y - mapY) * deltaDistY; }
-            else { stepY = 1; sideDistY = (mapY + 1.0f - player->pos.y) * deltaDistY; }
+            if (dir.x < 0)
+            {
+                stepX = -1;
+                sideDistX = (player->pos.x - mapX) * deltaDistX;
+            }
+            else
+            {
+                stepX = 1;
+                sideDistX = (mapX + 1.0f - player->pos.x) * deltaDistX;
+            }
+            if (dir.y < 0)
+            {
+                stepY = -1;
+                sideDistY = (player->pos.y - mapY) * deltaDistY;
+            }
+            else
+            {
+                stepY = 1;
+                sideDistY = (mapY + 1.0f - player->pos.y) * deltaDistY;
+            }
 
             while (!hit)
             {
-                if (sideDistX < sideDistY) { sideDistX += deltaDistX; mapX += stepX; side = 0; }
-                else { sideDistY += deltaDistY; mapY += stepY; side = 1; }
-                if (mapX < 0 || mapX >= mapWidth || mapY < 0 || mapY >= mapHeight) { hit = 1; break; }
-                if (getTile(mapX, mapY) != '.') { hit = 1; }
+                if (sideDistX < sideDistY)
+                {
+                    sideDistX += deltaDistX;
+                    mapX += stepX;
+                    side = 0;
+                }
+                else
+                {
+                    sideDistY += deltaDistY;
+                    mapY += stepY;
+                    side = 1;
+                }
+                if (mapX < 0 || mapX >= mapWidth || mapY < 0 || mapY >= mapHeight)
+                {
+                    hit = 1;
+                    break;
+                }
+                if (getTile(mapX, mapY) != '.')
+                {
+                    tile = getTile(mapX, mapY);
+                    hit = 1;
+                }
             }
 
             float perpWallDist;
-            if (side == 0) perpWallDist = (sideDistX - deltaDistX);
-            else perpWallDist = (sideDistY - deltaDistY);
-            if (perpWallDist < 0.0001f) perpWallDist = 0.0001f;
+            if (side == 0)
+                perpWallDist = (sideDistX - deltaDistX);
+            else
+                perpWallDist = (sideDistY - deltaDistY);
+            if (perpWallDist < 0.0001f)
+                perpWallDist = 0.0001f;
 
             // line height
             int lineHeight = (int)(height / perpWallDist);
             int drawStart = -lineHeight / 2 + (int)halfH;
             int drawEnd = lineHeight / 2 + (int)halfH;
-            if (drawStart < 0) drawStart = 0;
-            if (drawEnd >= height) drawEnd = height - 1;
+            if (drawStart < 0)
+                drawStart = 0;
+            if (drawEnd >= height)
+                drawEnd = height - 1;
+
+            
+            //wall texture
+            int wallTextureNum = (int)wallTypes.find(tile)->second;
+            D2D_POINT_2U texture_coords;
+            texture_coords.x = wallTextureNum * texture_wall_size % texture_size;
+            texture_coords.y = wallTextureNum * texture_wall_size / texture_size * texture_wall_size;
+
+            SDL_Color pixelColor = GetPixelColor(wallbitmap,texture_coords.x,texture_coords.y);
 
             // shade by side
             float shade = (side == 1) ? 0.75f : 1.0f;
-            wallBrush->SetColor(D2D1::ColorF(0.9f * shade, 0.9f * shade, 0.9f * shade, 1.0f));
+            
+            wallBrush->SetColor(D2D1::ColorF(pixelColor.r * shade, pixelColor.g * shade, pixelColor.b * shade, 1.0f));
             pRenderTarget->DrawLine(
                 D2D1::Point2F((FLOAT)x, (FLOAT)drawStart),
                 D2D1::Point2F((FLOAT)x, (FLOAT)drawEnd),
                 wallBrush,
                 1.0f);
         }
-
-        if (ceilBrush) ceilBrush->Release();
-        if (floorBrush) floorBrush->Release();
-        if (wallBrush) wallBrush->Release();
     }
     pRenderTarget->EndDraw();
 
@@ -221,7 +306,21 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 /* This function runs once at shutdown. */
 void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
-    delete player;
-    if (pRenderTarget) { pRenderTarget->Release(); pRenderTarget = NULL; }
-    if (pFactory) { pFactory->Release(); pFactory = NULL; }
+    player = NULL;
+    if (pRenderTarget)
+    {
+        pRenderTarget->Release();
+        pRenderTarget = NULL;
+    }
+    if (pFactory)
+    {
+        pFactory->Release();
+        pFactory = NULL;
+    }
+    if (ceilBrush)
+        ceilBrush->Release();
+    if (floorBrush)
+        floorBrush->Release();
+    if (wallBrush)
+        wallBrush->Release();
 }

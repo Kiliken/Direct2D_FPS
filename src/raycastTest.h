@@ -1,4 +1,5 @@
 #include <Windows.h>
+#include <SDL3/SDL.h>
 #include <unordered_map>
 #include <d2d1.h>
 
@@ -123,10 +124,11 @@ bool canMove(D2D_POINT_2F position, D2D_POINT_2F size)
     lower_right.x = position.x + size.x / 2.0f;
     lower_right.y = position.y + size.y / 2.0f;
 
-    if (upper_left.x < 0 || upper_left.y < 0 || lower_right.x >= mapWidth || lower_right.y >= mapHeight)
+    if (upper_left.x < 0.0 || upper_left.y < 0.0 || lower_right.x >= mapWidth || lower_right.y >= mapHeight)
     {
         return false; // out of map bounds
     }
+    
     // loop through each map tile within the rectangle. The rectangle could be multiple tiles in size!
     for (int y = upper_left.y; y <= lower_right.y; ++y)
     {
@@ -149,4 +151,47 @@ D2D_POINT_2F rotateVec(D2D_POINT_2F vec, float value)
     buffer.x = vec.x * std::cos(value) - vec.y * std::sin(value);
     buffer.y = vec.x * std::sin(value) + vec.y * std::cos(value);
     return buffer;
+}
+
+SDL_Color GetPixelColor(SDL_Surface* surface, int x, int y)
+{
+    SDL_Color color = {0,0,0,0};
+    if (!surface) return color;
+
+    if (SDL_MUSTLOCK(surface)) {
+        SDL_LockSurface(surface);
+    }
+
+    Uint8* pixels = (Uint8*)surface->pixels;
+    const SDL_PixelFormatDetails* fmt = SDL_GetPixelFormatDetails(surface->format);
+    int bpp = SDL_BYTESPERPIXEL(surface->format);
+
+    Uint8* p = pixels + y * surface->pitch + x * bpp;
+
+    Uint32 pixelValue = 0;
+    switch (bpp) {
+        case 1:
+            pixelValue = *p;
+            break;
+        case 2:
+            pixelValue = *(Uint16*)p;
+            break;
+        case 3:
+            if (SDL_BYTEORDER == SDL_BIG_ENDIAN)
+                pixelValue = p[0]<<16 | p[1]<<8 | p[2];
+            else
+                pixelValue = p[0] | p[1]<<8 | p[2]<<16;
+            break;
+        case 4:
+            pixelValue = *(Uint32*)p;
+            break;
+    }
+
+    SDL_GetRGBA(pixelValue, fmt, NULL, &color.r, &color.g, &color.b, &color.a);
+
+    if (SDL_MUSTLOCK(surface)) {
+        SDL_UnlockSurface(surface);
+    }
+
+    return color;
 }
