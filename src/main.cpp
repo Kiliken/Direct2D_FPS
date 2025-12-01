@@ -62,9 +62,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 
     wallbitmap = SDL_LoadBMP("../Assets/walls.bmp");
 
-    //wallbitmap = SDL_ConvertSurface(wallbitmap, SDL_PIXELFORMAT_BGRA32);
+    // wallbitmap = SDL_ConvertSurface(wallbitmap, SDL_PIXELFORMAT_BGRA32);
 
-    //pRenderTarget->CreateBitmap(D2D1::SizeU(wallbitmap->w, wallbitmap->h), wallbitmap->pixels, wallbitmap->pitch, &bmpProps, &wallTexture);
+    // pRenderTarget->CreateBitmap(D2D1::SizeU(wallbitmap->w, wallbitmap->h), wallbitmap->pixels, wallbitmap->pitch, &bmpProps, &wallTexture);
 
     if (!mapCheck())
     {
@@ -114,6 +114,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     D2D_POINT_2F right = {-std::sin(player->angle), std::cos(player->angle)};
 
     D2D_POINT_2F desired = {0.0f, 0.0f};
+    D2D_POINT_2U texture_coords = {0.0f, 0.0f};
 
     // Inputs
     {
@@ -249,14 +250,16 @@ SDL_AppResult SDL_AppIterate(void *appstate)
                     mapY += stepY;
                     side = 1;
                 }
+
+                tile = getTile(mapX, mapY);
+
                 if (mapX < 0 || mapX >= mapWidth || mapY < 0 || mapY >= mapHeight)
                 {
                     hit = 1;
                     break;
                 }
-                if (getTile(mapX, mapY) != '.')
+                if (tile != '.')
                 {
-                    tile = getTile(mapX, mapY);
                     hit = 1;
                 }
             }
@@ -278,24 +281,62 @@ SDL_AppResult SDL_AppIterate(void *appstate)
             if (drawEnd >= height)
                 drawEnd = height - 1;
 
-            
-            //wall texture
+            // wall texture
             int wallTextureNum = (int)wallTypes.find(tile)->second;
-            D2D_POINT_2U texture_coords;
-            texture_coords.x = wallTextureNum * texture_wall_size % texture_size;
-            texture_coords.y = wallTextureNum * texture_wall_size / texture_size * texture_wall_size;
 
-            SDL_Color pixelColor = GetPixelColor(wallbitmap,texture_coords.x,texture_coords.y);
+            // calculate value of wallX
+            double wallX; // where exactly the wall was hit
+            if (side == 0)
+                wallX = mapY + perpWallDist * dir.y;
+            else
+                wallX = mapX + perpWallDist * dir.x;
+            wallX -= floor((wallX));
+
+            // x coordinate on the texture
+            int texX = int(wallX * double(texture_wall_size));
+            if (side == 0 && dir.x > 0)
+                texX = texture_wall_size - texX - 1;
+            if (side == 1 && dir.y < 0)
+                texX = texture_wall_size - texX - 1;
+
+            // How much to increase the texture coordinate per screen pixel
+            double step = 1.0 * texture_wall_size / lineHeight;
+            // Starting texture coordinate
+            double texPos = (drawStart - height / 2 + lineHeight / 2) * step;
 
             // shade by side
             float shade = (side == 1) ? 0.75f : 1.0f;
-            
-            wallBrush->SetColor(D2D1::ColorF(pixelColor.r * shade, pixelColor.g * shade, pixelColor.b * shade, 1.0f));
-            pRenderTarget->DrawLine(
-                D2D1::Point2F((FLOAT)x, (FLOAT)drawStart),
-                D2D1::Point2F((FLOAT)x, (FLOAT)drawEnd),
-                wallBrush,
-                1.0f);
+
+            texture_coords.x = texX + (wallTextureNum % 4) * texture_wall_size; //this should be wallTextureNum % 4 * texture_wall_size
+
+            for (int y = drawStart; y < drawEnd; y++)
+            {
+                // Cast the texture coordinate to integer, and mask with (texHeight - 1) in case of overflow
+                int texY = (int)texPos & (texture_wall_size - 1);
+                texPos += step;
+
+                texture_coords.y = texY + (wallTextureNum / 4) * texture_wall_size; //this should be wallTextureNum / 4 * texture_wall_size
+
+                SDL_Color pixelColor = GetPixelColor(wallbitmap, texture_coords.x, texture_coords.y);
+                //SDL_Color pixelColor = SDL_Color{255,0,0,1};
+
+                wallBrush->SetColor(D2D1::ColorF(
+                    (pixelColor.r / 255.0f) * shade,
+                    (pixelColor.g / 255.0f) * shade,
+                    (pixelColor.b / 255.0f) * shade,
+                    1.0f));
+
+                pRenderTarget->FillRectangle(
+                    D2D1::RectF(x, y, x + 1, y + 1),
+                    wallBrush);
+            }
+
+            // wallBrush->SetColor(D2D1::ColorF(pixelColor.r * shade, pixelColor.g * shade, pixelColor.b * shade, 1.0f));
+            // pRenderTarget->DrawLine(
+            //     D2D1::Point2F((FLOAT)x, (FLOAT)drawStart),
+            //     D2D1::Point2F((FLOAT)x, (FLOAT)drawEnd),
+            //     wallBrush,
+            //     1.0f);
         }
     }
     pRenderTarget->EndDraw();
