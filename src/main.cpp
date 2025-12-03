@@ -7,27 +7,37 @@
 #include <unordered_map>
 #include <d2d1.h>
 #include <cmath>
+#include <iostream>
 #include "raycastTest.h"
 #include "Player.h"
 
-// Window Stuff
+// Window and Render Stuff
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
 static ID2D1Factory *pFactory = NULL;
 static ID2D1HwndRenderTarget *pRenderTarget = NULL;
+
+// Game Stuff
 static Player *player = NULL;
 static Uint64 ticks_prev = 0;
 static float dt = 0.0f;
 
-// Image Stuff
-D2D1_BITMAP_PROPERTIES bmpProps = D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
 SDL_Surface *wallbitmap = NULL;
-ID2D1Bitmap *wallTexture = NULL;
 
 // Brushes
 ID2D1SolidColorBrush *ceilBrush = NULL;
 ID2D1SolidColorBrush *floorBrush = NULL;
 ID2D1SolidColorBrush *wallBrush = NULL;
+
+// Wall Bitmap
+const D2D1_BITMAP_PROPERTIES bmpProps =
+    D2D1::BitmapProperties(
+        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,
+                          D2D1_ALPHA_MODE_PREMULTIPLIED));
+
+ID2D1Bitmap *bitmap = NULL;
+D2D1_SIZE_U size = D2D1::SizeU(1280, 720);
+std::vector<BYTE> pixels(1280 * 720 * 4);
 
 /* This function runs once at startup. */
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
@@ -61,6 +71,13 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.9f, 0.9f, 0.9f, 1.0f), &wallBrush);
 
     wallbitmap = SDL_LoadBMP("../Assets/walls.bmp");
+
+    pRenderTarget->CreateBitmap(
+        size,
+        pixels.data(), // pointer to pixel buffer
+        1280 * 4,      // pitch (stride in bytes)
+        &bmpProps,
+        &bitmap);
 
     // wallbitmap = SDL_ConvertSurface(wallbitmap, SDL_PIXELFORMAT_BGRA32);
 
@@ -285,12 +302,12 @@ SDL_AppResult SDL_AppIterate(void *appstate)
             int wallTextureNum = (int)wallTypes.find(tile)->second;
 
             // calculate value of wallX
-            double wallX; // where exactly the wall was hit
+            double wallX;
             if (side == 0)
-                wallX = mapY + perpWallDist * dir.y;
+                wallX = player->pos.y + perpWallDist * dir.y;
             else
-                wallX = mapX + perpWallDist * dir.x;
-            wallX -= floor((wallX));
+                wallX = player->pos.x + perpWallDist * dir.x;
+            wallX -= floor(wallX);
 
             // x coordinate on the texture
             int texX = int(wallX * double(texture_wall_size));
@@ -300,45 +317,50 @@ SDL_AppResult SDL_AppIterate(void *appstate)
                 texX = texture_wall_size - texX - 1;
 
             // How much to increase the texture coordinate per screen pixel
-            double step = 1.0 * texture_wall_size / lineHeight;
+            double step = 1.0 * double(texture_wall_size) / lineHeight;
             // Starting texture coordinate
             double texPos = (drawStart - height / 2 + lineHeight / 2) * step;
 
             // shade by side
             float shade = (side == 1) ? 0.75f : 1.0f;
 
-            texture_coords.x = texX + (wallTextureNum % 4) * texture_wall_size; //this should be wallTextureNum % 4 * texture_wall_size
+            texture_coords.x = texX + (wallTextureNum % 4) * texture_wall_size; // this should be wallTextureNum % 4 * texture_wall_size
 
-            for (int y = drawStart; y < drawEnd; y++)
+            // for (int y = drawStart; y < drawEnd; y++)
+            for (int y = 0; y < height; y++)
             {
+                int currentPixel = (y * width + x) * 4;
+
+                if (y <= drawStart || y >= drawEnd)
+                {
+                    pixels[currentPixel + 0] = 0x00;
+                    pixels[currentPixel + 1] = 0x00;
+                    pixels[currentPixel + 2] = 0x00;
+                    pixels[currentPixel + 3] = 0x00;
+                    continue;
+                }
+
                 // Cast the texture coordinate to integer, and mask with (texHeight - 1) in case of overflow
                 int texY = (int)texPos & (texture_wall_size - 1);
                 texPos += step;
 
-                texture_coords.y = texY + (wallTextureNum / 4) * texture_wall_size; //this should be wallTextureNum / 4 * texture_wall_size
+                texture_coords.y = texY + (wallTextureNum / 4) * texture_wall_size; // this should be wallTextureNum / 4 * texture_wall_size
 
                 SDL_Color pixelColor = GetPixelColor(wallbitmap, texture_coords.x, texture_coords.y);
-                //SDL_Color pixelColor = SDL_Color{255,0,0,1};
 
-                wallBrush->SetColor(D2D1::ColorF(
-                    (pixelColor.r / 255.0f) * shade,
-                    (pixelColor.g / 255.0f) * shade,
-                    (pixelColor.b / 255.0f) * shade,
-                    1.0f));
-
-                pRenderTarget->FillRectangle(
-                    D2D1::RectF(x, y, x + 1, y + 1),
-                    wallBrush);
+                pixels[currentPixel + 0] = BYTE(pixelColor.b * shade);
+                pixels[currentPixel + 1] = BYTE(pixelColor.g * shade);
+                pixels[currentPixel + 2] = BYTE(pixelColor.r * shade);
+                pixels[currentPixel + 3] = 0xFF;
             }
-
-            // wallBrush->SetColor(D2D1::ColorF(pixelColor.r * shade, pixelColor.g * shade, pixelColor.b * shade, 1.0f));
-            // pRenderTarget->DrawLine(
-            //     D2D1::Point2F((FLOAT)x, (FLOAT)drawStart),
-            //     D2D1::Point2F((FLOAT)x, (FLOAT)drawEnd),
-            //     wallBrush,
-            //     1.0f);
         }
+
+        bitmap->CopyFromMemory(nullptr, pixels.data(), 1280 * 4);
+        pRenderTarget->DrawBitmap(
+            bitmap,
+            D2D1::RectF(0, 0, (FLOAT)1280, (FLOAT)720));
     }
+
     pRenderTarget->EndDraw();
 
     return SDL_APP_CONTINUE;
@@ -347,21 +369,41 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 /* This function runs once at shutdown. */
 void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
-    player = NULL;
+    if (wallbitmap) { SDL_DestroySurface(wallbitmap); wallbitmap = nullptr; }
+    if (renderer)   { SDL_DestroyRenderer(renderer); renderer = nullptr; }
+    if (window)     { SDL_DestroyWindow(window); window = nullptr; }
+
+    delete player;
+    player = nullptr;
+
+    if (bitmap)
+    {
+        bitmap->Release();
+        bitmap = nullptr;
+    }
+    if (ceilBrush)
+    {
+        ceilBrush->Release();
+        ceilBrush = nullptr;
+    }
+    if (floorBrush)
+    {
+        floorBrush->Release();
+        floorBrush = nullptr;
+    }
+    if (wallBrush)
+    {
+        wallBrush->Release();
+        wallBrush = nullptr;
+    }
     if (pRenderTarget)
     {
         pRenderTarget->Release();
-        pRenderTarget = NULL;
+        pRenderTarget = nullptr;
     }
     if (pFactory)
     {
         pFactory->Release();
-        pFactory = NULL;
+        pFactory = nullptr;
     }
-    if (ceilBrush)
-        ceilBrush->Release();
-    if (floorBrush)
-        floorBrush->Release();
-    if (wallBrush)
-        wallBrush->Release();
 }
