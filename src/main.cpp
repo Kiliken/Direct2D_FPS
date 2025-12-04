@@ -7,9 +7,13 @@
 #include <unordered_map>
 #include <d2d1.h>
 #include <cmath>
+#include <vector>
+#include <random>
+#include <algorithm>
 #include <iostream>
 #include "raycastTest.h"
 #include "Player.h"
+#include "EnemyManager.h"
 
 // Window and Render Stuff
 static SDL_Window *window = NULL;
@@ -19,6 +23,7 @@ static ID2D1HwndRenderTarget *pRenderTarget = NULL;
 
 // Game Stuff
 static Player *player = NULL;
+static EnemyManager enemyManager;
 static Uint64 ticks_prev = 0;
 static float dt = 0.0f;
 
@@ -28,6 +33,7 @@ SDL_Surface *wallbitmap = NULL;
 ID2D1SolidColorBrush *ceilBrush = NULL;
 ID2D1SolidColorBrush *floorBrush = NULL;
 ID2D1SolidColorBrush *wallBrush = NULL;
+ID2D1SolidColorBrush *enemyBrush = NULL;
 
 // Wall Bitmap
 const D2D1_BITMAP_PROPERTIES bmpProps =
@@ -65,10 +71,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 
     player = new Player();
     ticks_prev = SDL_GetTicks();
+    enemyManager.Reset();
 
     pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.1f, 0.1f, 0.15f, 1.0f), &ceilBrush);
     pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.2f, 0.2f, 0.22f, 1.0f), &floorBrush);
     pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.9f, 0.9f, 0.9f, 1.0f), &wallBrush);
+    pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 0.0f, 0.0f, 1.0f), &enemyBrush);
 
     wallbitmap = SDL_LoadBMP("../Assets/walls.bmp");
 
@@ -191,6 +199,8 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         player->pos = nextPos;
     }
 
+    enemyManager.Update(dt, player->pos);
+
     // Draw
     pRenderTarget->BeginDraw();
     {
@@ -209,6 +219,8 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         // raycasting
         const float fov = 60.0f * (3.14159265f / 180.0f); // 60 degrees
         const float planeHalf = std::tan(fov * 0.5f);
+        static std::vector<float> depthBuffer;
+        depthBuffer.assign(width, 1e30f);
 
         for (int x = 0; x < width; ++x)
         {
@@ -353,12 +365,15 @@ SDL_AppResult SDL_AppIterate(void *appstate)
                 pixels[currentPixel + 2] = BYTE(pixelColor.r * shade);
                 pixels[currentPixel + 3] = 0xFF;
             }
+            depthBuffer[x] = perpWallDist;
         }
 
         bitmap->CopyFromMemory(nullptr, pixels.data(), 1280 * 4);
         pRenderTarget->DrawBitmap(
             bitmap,
             D2D1::RectF(0, 0, (FLOAT)1280, (FLOAT)720));
+
+        enemyManager.RenderBillboards(pRenderTarget, enemyBrush, depthBuffer, width, height, halfH, player->pos, player->angle, planeHalf);
     }
 
     pRenderTarget->EndDraw();
@@ -369,9 +384,21 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 /* This function runs once at shutdown. */
 void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
-    if (wallbitmap) { SDL_DestroySurface(wallbitmap); wallbitmap = nullptr; }
-    if (renderer)   { SDL_DestroyRenderer(renderer); renderer = nullptr; }
-    if (window)     { SDL_DestroyWindow(window); window = nullptr; }
+    if (wallbitmap)
+    {
+        SDL_DestroySurface(wallbitmap);
+        wallbitmap = nullptr;
+    }
+    if (renderer)
+    {
+        SDL_DestroyRenderer(renderer);
+        renderer = nullptr;
+    }
+    if (window)
+    {
+        SDL_DestroyWindow(window);
+        window = nullptr;
+    }
 
     delete player;
     player = nullptr;
@@ -406,4 +433,9 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
         pFactory->Release();
         pFactory = nullptr;
     }
+    if (enemyBrush){
+        enemyBrush->Release();
+        enemyBrush = nullptr;
+    }
+            
 }
