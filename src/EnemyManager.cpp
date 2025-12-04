@@ -69,11 +69,7 @@ void EnemyManager::Update(float dt, const D2D_POINT_2F &playerPos)
 void EnemyManager::CreateBillboardRenderer(ID2D1HwndRenderTarget *rt)
 {
     enemyBmpPx = std::vector<BYTE>(1280 * 720 * 4);
-
-    for (int j = 0; j < 1280 * 720 * 4; j++)
-    {
-        enemyBmpPx[j] = 0x00;
-    }
+    std::fill(enemyBmpPx.begin(), enemyBmpPx.end(), 0x00);
 
     rt->CreateBitmap(
         enemyBmpSize,
@@ -94,6 +90,8 @@ void EnemyManager::RenderBillboards(ID2D1HwndRenderTarget *rt,
                                     float playerAngle,
                                     float planeHalf)
 {
+    std::fill(enemyBmpPx.begin(), enemyBmpPx.end(), 0x00);
+
     for (const auto &e : enemies)
     {
         float dxw = e.pos.x - playerPos.x;
@@ -124,30 +122,36 @@ void EnemyManager::RenderBillboards(ID2D1HwndRenderTarget *rt,
 
         int l = (drawLeft < 0 ? 0 : drawLeft);
         int r = (drawRight > (width - 1) ? (width - 1) : drawRight);
-        for (int x = 0; x <= 1280; ++x)
+
+        D2D1_POINT_2U spritePos = D2D1::Point2U(0, 0);
+        for (int sx = l; sx <= r; ++sx)
         {
-            if (!(cx < depthBuffer[x] && (x >= l && x <= r)))
+            
+            if (cx < depthBuffer[sx])
             {
-                continue;
-            }
+                //int texX = int(256 * (sx - (-spriteWidth / 2 + spriteScreenX)) * texWidth / spriteWidth) / 256;
 
-            rt->DrawLine(
-                D2D1::Point2F((FLOAT)x, (FLOAT)drawTop),
-                D2D1::Point2F((FLOAT)x, (FLOAT)drawBottom),
-                enemyBrush,
-                1.0f);
-
-            for (int y = 0; y < height; y++)
-            {
-                int currentPixel = (y * width + x) * 4;
-                SDL_Color pixelColor = GetPixelColor(mainText, x, 6);
-
+                for (int sy = drawTop; sy <= drawBottom; ++sy)
                 {
+                    //int d = (sy - vMoveScreen) * 256 - height * 128 + spriteHeight * 128; // 256 and 128 factors to avoid floats
+                    //int texY = ((d * 512) / spriteHeight) / 256;
+
+                    int currentPixel = (sy * width + sx) * 4;
+                    SDL_Color pixelColor = GetPixelColor(mainText, 10, 10);
+
+                    if (pixelColor.b == 0xFF && pixelColor.r == 0xFF)
+                    {
+                        continue;
+                    }
+
                     enemyBmpPx[currentPixel + 0] = BYTE(pixelColor.b);
                     enemyBmpPx[currentPixel + 1] = BYTE(pixelColor.g);
                     enemyBmpPx[currentPixel + 2] = BYTE(pixelColor.r);
                     enemyBmpPx[currentPixel + 3] = 0xFF;
+
+                    spritePos.y++;
                 }
+                spritePos.x++;
             }
         }
     }
@@ -155,5 +159,5 @@ void EnemyManager::RenderBillboards(ID2D1HwndRenderTarget *rt,
     enemyBmp->CopyFromMemory(nullptr, enemyBmpPx.data(), 1280 * 4);
     rt->DrawBitmap(
         enemyBmp,
-        D2D1::RectF(0.0f, 0.0f, 1280.0f, 720.0f));
+        D2D1::RectF(0, 0, (FLOAT)1280, (FLOAT)720));
 }

@@ -34,7 +34,7 @@ private:
 
     // Sprite
     ID2D1Bitmap *enemyBmp = NULL;
-    D2D1_SIZE_U enemyBmpSize = D2D1::SizeU(128, 128);
+    D2D1_SIZE_U enemyBmpSize = D2D1::SizeU(1280, 720);
     std::vector<BYTE> enemyBmpPx;
 
     void TrySpawn(const D2D_POINT_2F &playerPos);

@@ -228,6 +228,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         const float planeHalf = std::tan(fov * 0.5f);
         static std::vector<float> depthBuffer;
         depthBuffer.assign(width, 1e30f);
+        std::fill(pixels.begin(), pixels.end(), 0x00);
 
         for (int x = 0; x < width; ++x)
         {
@@ -237,7 +238,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
             D2D_POINT_2F dir = {
                 std::cos(player->angle) + planeHalf * camX * (-std::sin(player->angle)),
                 std::sin(player->angle) + planeHalf * camX * (std::cos(player->angle))};
-
+            
             // DDA setup
             int mapX = (int)player->pos.x;
             int mapY = (int)player->pos.y;
@@ -352,10 +353,6 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 
                 if (y <= drawStart || y >= drawEnd)
                 {
-                    pixels[currentPixel + 0] = 0x00;
-                    pixels[currentPixel + 1] = 0x00;
-                    pixels[currentPixel + 2] = 0x00;
-                    pixels[currentPixel + 3] = 0x00;
                     continue;
                 }
 
