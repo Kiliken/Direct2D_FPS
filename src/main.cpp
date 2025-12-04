@@ -27,7 +27,7 @@ static EnemyManager enemyManager;
 static Uint64 ticks_prev = 0;
 static float dt = 0.0f;
 
-SDL_Surface *wallbitmap = NULL;
+SDL_Surface *textureBitmap = NULL;
 
 // Brushes
 ID2D1SolidColorBrush *ceilBrush = NULL;
@@ -36,11 +36,6 @@ ID2D1SolidColorBrush *wallBrush = NULL;
 ID2D1SolidColorBrush *enemyBrush = NULL;
 
 // Wall Bitmap
-const D2D1_BITMAP_PROPERTIES bmpProps =
-    D2D1::BitmapProperties(
-        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,
-                          D2D1_ALPHA_MODE_PREMULTIPLIED));
-
 ID2D1Bitmap *bitmap = NULL;
 D2D1_SIZE_U size = D2D1::SizeU(1280, 720);
 std::vector<BYTE> pixels(1280 * 720 * 4);
@@ -54,6 +49,9 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
         SDL_Log("Couldn't create window and renderer: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
+
+    SDL_HideCursor();
+
     HWND hwnd = (HWND)SDL_GetPointerProperty(SDL_GetWindowProperties(window),
                                              SDL_PROP_WINDOW_WIN32_HWND_POINTER,
                                              NULL);
@@ -78,7 +76,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.9f, 0.9f, 0.9f, 1.0f), &wallBrush);
     pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 0.0f, 0.0f, 1.0f), &enemyBrush);
 
-    wallbitmap = SDL_LoadBMP("../Assets/walls.bmp");
+    textureBitmap = SDL_LoadBMP("../Assets/walls.bmp");
 
     pRenderTarget->CreateBitmap(
         size,
@@ -86,10 +84,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
         1280 * 4,      // pitch (stride in bytes)
         &bmpProps,
         &bitmap);
+    
+    enemyManager.CreateBillboardRenderer(pRenderTarget);
 
-    // wallbitmap = SDL_ConvertSurface(wallbitmap, SDL_PIXELFORMAT_BGRA32);
+    // textureBitmap = SDL_ConvertSurface(textureBitmap, SDL_PIXELFORMAT_BGRA32);
 
-    // pRenderTarget->CreateBitmap(D2D1::SizeU(wallbitmap->w, wallbitmap->h), wallbitmap->pixels, wallbitmap->pitch, &bmpProps, &wallTexture);
+    // pRenderTarget->CreateBitmap(D2D1::SizeU(textureBitmap->w, textureBitmap->h), textureBitmap->pixels, textureBitmap->pitch, &bmpProps, &wallTexture);
 
     if (!mapCheck())
     {
@@ -178,6 +178,13 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         if (key_states[SDL_SCANCODE_ESCAPE])
         {
             return SDL_APP_SUCCESS;
+        }
+        
+        // Mouse position reset
+        D2D_POINT_2F mousePos = D2D1::Point2F(0.0f,0.0f);
+        SDL_GetMouseState(&mousePos.x,&mousePos.y);
+        if(mousePos.x < 20.0f || mousePos.y < 20.0f || mousePos.x > 1200.0f || mousePos.y > 700.0f){
+            SDL_WarpMouseInWindow(window, 640.0f, 360.0f);
         }
     }
 
@@ -358,7 +365,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 
                 texture_coords.y = texY + (wallTextureNum / 4) * texture_wall_size; // this should be wallTextureNum / 4 * texture_wall_size
 
-                SDL_Color pixelColor = GetPixelColor(wallbitmap, texture_coords.x, texture_coords.y);
+                SDL_Color pixelColor = GetPixelColor(textureBitmap, texture_coords.x, texture_coords.y);
 
                 pixels[currentPixel + 0] = BYTE(pixelColor.b * shade);
                 pixels[currentPixel + 1] = BYTE(pixelColor.g * shade);
@@ -373,7 +380,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
             bitmap,
             D2D1::RectF(0, 0, (FLOAT)1280, (FLOAT)720));
 
-        enemyManager.RenderBillboards(pRenderTarget, enemyBrush, depthBuffer, width, height, halfH, player->pos, player->angle, planeHalf);
+        enemyManager.RenderBillboards(pRenderTarget, enemyBrush,textureBitmap, depthBuffer, width, height, halfH, player->pos, player->angle, planeHalf);
     }
 
     pRenderTarget->EndDraw();
@@ -384,10 +391,10 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 /* This function runs once at shutdown. */
 void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
-    if (wallbitmap)
+    if (textureBitmap)
     {
-        SDL_DestroySurface(wallbitmap);
-        wallbitmap = nullptr;
+        SDL_DestroySurface(textureBitmap);
+        textureBitmap = nullptr;
     }
     if (renderer)
     {
@@ -402,6 +409,8 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
 
     delete player;
     player = nullptr;
+
+    delete &enemyManager;
 
     if (bitmap)
     {
@@ -433,9 +442,9 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
         pFactory->Release();
         pFactory = nullptr;
     }
-    if (enemyBrush){
+    if (enemyBrush)
+    {
         enemyBrush->Release();
         enemyBrush = nullptr;
     }
-            
 }

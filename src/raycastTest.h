@@ -71,6 +71,12 @@ const char worldMap[] =
     "N......................^"
     "########################";
 
+
+const D2D1_BITMAP_PROPERTIES bmpProps =
+    D2D1::BitmapProperties(
+        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,
+                          D2D1_ALPHA_MODE_PREMULTIPLIED));
+
 // get a tile from worldMap. Not memory safe.
 char getTile(int x, int y);
 
