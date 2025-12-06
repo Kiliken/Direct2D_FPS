@@ -5,6 +5,8 @@
 #include <unordered_map>
 #include <d2d1.h>
 
+class EnemyManager;
+
 const float cameraHeight = 0.66f; // height of player camera(1.0 is ceiling, 0.0 is floor)
 
 const int texture_size = 512;      // size(width and height) of texture that will hold all wall textures
@@ -91,3 +93,5 @@ D2D_POINT_2F rotateVec(D2D_POINT_2F vec, float value);
 
 // get pixel from a SDL surface
 SDL_Color GetPixelColor(SDL_Surface* surface, int x, int y);
+
+float checkEnemyHit(const D2D_POINT_2F &rayPos, const D2D_POINT_2F &rayDir, D2D_POINT_2F &hitPos, EnemyManager &enemyManager);

@@ -8,6 +8,8 @@
 class EnemyManager
 {
 public:
+    std::vector<Enemy> enemies;
+
     EnemyManager();
     ~EnemyManager();
 
@@ -25,9 +27,9 @@ public:
                           float planeHalf);
 
     const std::vector<Enemy> &GetEnemies() const { return enemies; }
+    bool RemoveEnemyAt(const D2D_POINT_2F &worldPos, float proximity);
 
 private:
-    std::vector<Enemy> enemies;
     float spawnAccumulator = 0.0f;
     static const int maxEnemies = 20;
     std::mt19937 rng;

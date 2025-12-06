@@ -15,6 +15,7 @@
 #include "Player.h"
 #include "EnemyManager.h"
 
+
 // Window and Render Stuff
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
@@ -128,6 +129,36 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
         // mouse horizontal movement rotates view
         const float sensitivity = 0.0025f; // radians per pixel
         player->angle += event->motion.xrel * sensitivity;
+    }
+    if (event->type == SDL_EVENT_MOUSE_BUTTON_DOWN)
+    {
+        if (event->button.button == SDL_BUTTON_LEFT)
+        {
+            // 1. Calculate the ray direction for the center of the screen
+            // The center ray is simply the player's view direction.
+            D2D_POINT_2F rayDir = {std::cos(player->angle), std::sin(player->angle)};
+
+            // 2. Check for an enemy hit along the ray
+            D2D_POINT_2F hitPos;
+            const float enemyCheckProximity = 0.5f; // A small radius around the hit point to confirm the enemy's center is close
+            
+            // The wall rendering already calculates the perpWallDist for the center ray (x=width/2, camX=0).
+            // We use the new checkEnemyHit for accurate sprite hit.
+            float hitDistance = checkEnemyHit(player->pos, rayDir, hitPos, enemyManager);
+
+            // 3. Compare hit distance with the closest enemy.
+            // A basic check to see if an enemy was hit (hitDistance is not the initial 1e30f value).
+            if (hitDistance < 1e30f)
+            {
+                // An enemy was hit. Remove it.
+                // The hitPos is where the *ray* hit the enemy bounding circle.
+                // We use a small proximity check to remove the enemy whose center is closest to the hitPos.
+                if (enemyManager.RemoveEnemyAt(hitPos, enemyCheckProximity))
+                {
+                    SDL_Log("Enemy destroyed at distance: %f", hitDistance);
+                }
+            }
+        }
     }
 
     return SDL_APP_CONTINUE;
@@ -419,7 +450,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
     delete player;
     player = nullptr;
 
-    delete &enemyManager;
+    //delete &enemyManager; // crash risk
 
     if (bitmap)
     {
