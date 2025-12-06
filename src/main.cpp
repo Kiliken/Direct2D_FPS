@@ -15,7 +15,6 @@
 #include "Player.h"
 #include "EnemyManager.h"
 
-
 // Window and Render Stuff
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
@@ -40,6 +39,10 @@ ID2D1SolidColorBrush *enemyBrush = NULL;
 ID2D1Bitmap *bitmap = NULL;
 D2D1_SIZE_U size;
 std::vector<BYTE> pixels;
+
+// Crosshair
+D2D1_ELLIPSE crosshair;
+D2D1_RECT_F crossCenter;
 
 /* This function runs once at startup. */
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
@@ -89,11 +92,19 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     pRenderTarget->CreateBitmap(
         size,
         pixels.data(), // pointer to pixel buffer
-        width * 4,      // pitch (stride in bytes)
+        width * 4,     // pitch (stride in bytes)
         &bmpProps,
         &bitmap);
 
     enemyManager.CreateBillboardRenderer(pRenderTarget, width, height);
+
+    crosshair = D2D1::Ellipse(
+        D2D1::Point2F((FLOAT)(width/2), (FLOAT)(height/2)),
+        25.0f, 
+        25.0f 
+    );
+
+    crossCenter = D2D1::RectF(width/2 -1, height/2 -1, width/2 + 1, height/2 + 1);
 
     // textureBitmap = SDL_ConvertSurface(textureBitmap, SDL_PIXELFORMAT_BGRA32);
 
@@ -141,7 +152,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
             // 2. Check for an enemy hit along the ray
             D2D_POINT_2F hitPos;
             const float enemyCheckProximity = 0.5f; // A small radius around the hit point to confirm the enemy's center is close
-            
+
             // The wall rendering already calculates the perpWallDist for the center ray (x=width/2, camX=0).
             // We use the new checkEnemyHit for accurate sprite hit.
             float hitDistance = checkEnemyHit(player->pos, rayDir, hitPos, enemyManager);
@@ -421,6 +432,9 @@ SDL_AppResult SDL_AppIterate(void *appstate)
             D2D1::RectF(0, 0, (FLOAT)width, (FLOAT)height));
 
         enemyManager.RenderBillboards(pRenderTarget, enemyBrush, textureBitmap, depthBuffer, width, height, halfH, player->pos, player->angle, planeHalf);
+
+        pRenderTarget->DrawEllipse(crosshair, enemyBrush);
+        pRenderTarget->DrawRectangle(crossCenter, enemyBrush);
     }
 
     pRenderTarget->EndDraw();
@@ -450,7 +464,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
     delete player;
     player = nullptr;
 
-    //delete &enemyManager; // crash risk
+    // delete &enemyManager; // crash risk
 
     if (bitmap)
     {
