@@ -68,14 +68,14 @@ void EnemyManager::Update(float dt, const D2D_POINT_2F &playerPos)
 // Create the D2D1 bitmap of the billboard renderer
 void EnemyManager::CreateBillboardRenderer(ID2D1HwndRenderTarget *rt, int width, int height)
 {
-    enemyBmpSize  = D2D1::SizeU(width, height);
+    enemyBmpSize = D2D1::SizeU(width, height);
     enemyBmpPx = std::vector<BYTE>(width * height * 4);
     std::fill(enemyBmpPx.begin(), enemyBmpPx.end(), 0x00);
 
     rt->CreateBitmap(
         enemyBmpSize,
         enemyBmpPx.data(), // pointer to pixel buffer
-        width * 4,          // pitch (stride in bytes)
+        width * 4,         // pitch (stride in bytes)
         &bmpProps,
         &enemyBmp);
 }
@@ -127,20 +127,21 @@ void EnemyManager::RenderBillboards(ID2D1HwndRenderTarget *rt,
         D2D1_POINT_2U spritePos = D2D1::Point2U(0, 0);
         for (int sx = l; sx <= r; ++sx)
         {
-            
+
             if (cx < depthBuffer[sx])
             {
-                //int texX = int(256 * (sx - (-spriteWidth / 2 + spriteScreenX)) * texWidth / spriteWidth) / 256;
+                int texX = int(256 * (sx - (-spriteWidth / 2 + spriteScreenX)) * 128 / spriteWidth) / 256;
+                // int texX = int(256 * (sx - (-spriteWidth / 2 + spriteScreenX)) * texWidth / spriteWidth) / 256;
 
                 for (int sy = drawTop; sy <= drawBottom; ++sy)
                 {
-                    //int d = (sy - vMoveScreen) * 256 - height * 128 + spriteHeight * 128; // 256 and 128 factors to avoid floats
-                    //int texY = ((d * 512) / spriteHeight) / 256;
+                    int d = (sy) * 256 - height * 128 + spriteHeight * 128; // 256 and 128 factors to avoid floats
+                    int texY = ((d * 128) / spriteHeight) / 256;
 
                     int currentPixel = (sy * width + sx) * 4;
-                    SDL_Color pixelColor = GetPixelColor(mainText, 10, 10);
+                    SDL_Color pixelColor = GetPixelColor(mainText, texX, texY + 384);
 
-                    if (pixelColor.b == 0xFF && pixelColor.r == 0xFF)
+                    if (pixelColor.b > 0xEE && pixelColor.r > 0xEE)
                     {
                         continue;
                     }
