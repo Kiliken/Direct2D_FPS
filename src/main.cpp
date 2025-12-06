@@ -37,14 +37,14 @@ ID2D1SolidColorBrush *enemyBrush = NULL;
 
 // Wall Bitmap
 ID2D1Bitmap *bitmap = NULL;
-D2D1_SIZE_U size = D2D1::SizeU(1280, 720);
-std::vector<BYTE> pixels(1280 * 720 * 4);
+D2D1_SIZE_U size;
+std::vector<BYTE> pixels;
 
 /* This function runs once at startup. */
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
     /* Create the window */
-    if (!SDL_CreateWindowAndRenderer("D2DFPS", 1280, 720, SDL_WINDOW_ALWAYS_ON_TOP, &window, &renderer))
+    if (!SDL_CreateWindowAndRenderer("D2DFPS", 1920, 1080, SDL_WINDOW_ALWAYS_ON_TOP, &window, &renderer))
     {
         SDL_Log("Couldn't create window and renderer: %s", SDL_GetError());
         return SDL_APP_FAILURE;
@@ -67,6 +67,13 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
                                          D2D1::SizeU(rc.right - rc.left, rc.bottom - rc.top)),
         &pRenderTarget);
 
+    D2D1_SIZE_F rtSize = pRenderTarget->GetSize();
+    const int width = static_cast<int>(rtSize.width);
+    const int height = static_cast<int>(rtSize.height);
+
+    size = D2D1::SizeU(width, height);
+    pixels = std::vector<BYTE>(width * height * 4);
+
     player = new Player();
     ticks_prev = SDL_GetTicks();
     enemyManager.Reset();
@@ -81,11 +88,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     pRenderTarget->CreateBitmap(
         size,
         pixels.data(), // pointer to pixel buffer
-        1280 * 4,      // pitch (stride in bytes)
+        width * 4,      // pitch (stride in bytes)
         &bmpProps,
         &bitmap);
-    
-    enemyManager.CreateBillboardRenderer(pRenderTarget);
+
+    enemyManager.CreateBillboardRenderer(pRenderTarget, width, height);
 
     // textureBitmap = SDL_ConvertSurface(textureBitmap, SDL_PIXELFORMAT_BGRA32);
 
@@ -179,11 +186,12 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         {
             return SDL_APP_SUCCESS;
         }
-        
+
         // Mouse position reset
-        D2D_POINT_2F mousePos = D2D1::Point2F(0.0f,0.0f);
-        SDL_GetMouseState(&mousePos.x,&mousePos.y);
-        if(mousePos.x < 20.0f || mousePos.y < 20.0f || mousePos.x > 1200.0f || mousePos.y > 700.0f){
+        D2D_POINT_2F mousePos = D2D1::Point2F(0.0f, 0.0f);
+        SDL_GetMouseState(&mousePos.x, &mousePos.y);
+        if (mousePos.x < 20.0f || mousePos.y < 20.0f || mousePos.x > 1200.0f || mousePos.y > 700.0f)
+        {
             SDL_WarpMouseInWindow(window, 640.0f, 360.0f);
         }
     }
@@ -238,7 +246,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
             D2D_POINT_2F dir = {
                 std::cos(player->angle) + planeHalf * camX * (-std::sin(player->angle)),
                 std::sin(player->angle) + planeHalf * camX * (std::cos(player->angle))};
-            
+
             // DDA setup
             int mapX = (int)player->pos.x;
             int mapY = (int)player->pos.y;
@@ -353,6 +361,10 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 
                 if (y <= drawStart || y >= drawEnd)
                 {
+                    pixels[currentPixel + 0] = 0x00;
+                    pixels[currentPixel + 1] = 0x00;
+                    pixels[currentPixel + 2] = 0x00;
+                    pixels[currentPixel + 3] = 0x00;
                     continue;
                 }
 
@@ -372,12 +384,12 @@ SDL_AppResult SDL_AppIterate(void *appstate)
             depthBuffer[x] = perpWallDist;
         }
 
-        bitmap->CopyFromMemory(nullptr, pixels.data(), 1280 * 4);
+        bitmap->CopyFromMemory(nullptr, pixels.data(), width * 4);
         pRenderTarget->DrawBitmap(
             bitmap,
-            D2D1::RectF(0, 0, (FLOAT)1280, (FLOAT)720));
+            D2D1::RectF(0, 0, (FLOAT)width, (FLOAT)height));
 
-        enemyManager.RenderBillboards(pRenderTarget, enemyBrush,textureBitmap, depthBuffer, width, height, halfH, player->pos, player->angle, planeHalf);
+        enemyManager.RenderBillboards(pRenderTarget, enemyBrush, textureBitmap, depthBuffer, width, height, halfH, player->pos, player->angle, planeHalf);
     }
 
     pRenderTarget->EndDraw();

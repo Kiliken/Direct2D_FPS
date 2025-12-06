@@ -13,7 +13,7 @@ public:
 
     void Reset();
     void Update(float dt, const D2D_POINT_2F &playerPos);
-    void CreateBillboardRenderer(ID2D1HwndRenderTarget *rt);
+    void CreateBillboardRenderer(ID2D1HwndRenderTarget *rt, int width, int height);
     void RenderBillboards(ID2D1HwndRenderTarget *rt,
                           ID2D1SolidColorBrush *enemyBrush,
                           SDL_Surface *mainText,
@@ -34,7 +34,7 @@ private:
 
     // Sprite
     ID2D1Bitmap *enemyBmp = NULL;
-    D2D1_SIZE_U enemyBmpSize = D2D1::SizeU(1280, 720);
+    D2D1_SIZE_U enemyBmpSize;
     std::vector<BYTE> enemyBmpPx;
 
     void TrySpawn(const D2D_POINT_2F &playerPos);

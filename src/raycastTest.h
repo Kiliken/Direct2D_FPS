@@ -5,9 +5,6 @@
 #include <unordered_map>
 #include <d2d1.h>
 
-const int screenWidth = 1280;
-const int screenHeight = 720;
-
 const float cameraHeight = 0.66f; // height of player camera(1.0 is ceiling, 0.0 is floor)
 
 const int texture_size = 512;      // size(width and height) of texture that will hold all wall textures

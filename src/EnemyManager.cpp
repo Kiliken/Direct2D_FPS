@@ -66,15 +66,16 @@ void EnemyManager::Update(float dt, const D2D_POINT_2F &playerPos)
 }
 
 // Create the D2D1 bitmap of the billboard renderer
-void EnemyManager::CreateBillboardRenderer(ID2D1HwndRenderTarget *rt)
+void EnemyManager::CreateBillboardRenderer(ID2D1HwndRenderTarget *rt, int width, int height)
 {
-    enemyBmpPx = std::vector<BYTE>(1280 * 720 * 4);
+    enemyBmpSize  = D2D1::SizeU(width, height);
+    enemyBmpPx = std::vector<BYTE>(width * height * 4);
     std::fill(enemyBmpPx.begin(), enemyBmpPx.end(), 0x00);
 
     rt->CreateBitmap(
         enemyBmpSize,
         enemyBmpPx.data(), // pointer to pixel buffer
-        1280 * 4,          // pitch (stride in bytes)
+        width * 4,          // pitch (stride in bytes)
         &bmpProps,
         &enemyBmp);
 }
@@ -156,8 +157,8 @@ void EnemyManager::RenderBillboards(ID2D1HwndRenderTarget *rt,
         }
     }
 
-    enemyBmp->CopyFromMemory(nullptr, enemyBmpPx.data(), 1280 * 4);
+    enemyBmp->CopyFromMemory(nullptr, enemyBmpPx.data(), width * 4);
     rt->DrawBitmap(
         enemyBmp,
-        D2D1::RectF(0, 0, (FLOAT)1280, (FLOAT)720));
+        D2D1::RectF(0, 0, (FLOAT)width, (FLOAT)height));
 }
