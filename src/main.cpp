@@ -48,7 +48,7 @@ D2D1_RECT_F crossCenter;
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
     /* Create the window */
-    if (!SDL_CreateWindowAndRenderer("D2DFPS", 1920, 1080, SDL_WINDOW_ALWAYS_ON_TOP, &window, &renderer))
+    if (!SDL_CreateWindowAndRenderer("D2DFPS", 1280, 720, SDL_WINDOW_ALWAYS_ON_TOP, &window, &renderer))
     {
         SDL_Log("Couldn't create window and renderer: %s", SDL_GetError());
         return SDL_APP_FAILURE;
@@ -99,12 +99,11 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     enemyManager.CreateBillboardRenderer(pRenderTarget, width, height);
 
     crosshair = D2D1::Ellipse(
-        D2D1::Point2F((FLOAT)(width/2), (FLOAT)(height/2)),
-        25.0f, 
-        25.0f 
-    );
+        D2D1::Point2F((FLOAT)(width / 2), (FLOAT)(height / 2)),
+        25.0f,
+        25.0f);
 
-    crossCenter = D2D1::RectF(width/2 -1, height/2 -1, width/2 + 1, height/2 + 1);
+    crossCenter = D2D1::RectF(width / 2 - 1, height / 2 - 1, width / 2 + 1, height / 2 + 1);
 
     // textureBitmap = SDL_ConvertSurface(textureBitmap, SDL_PIXELFORMAT_BGRA32);
 
@@ -141,9 +140,36 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
         const float sensitivity = 0.0025f; // radians per pixel
         player->angle += event->motion.xrel * sensitivity;
     }
-    if (event->type == SDL_EVENT_MOUSE_BUTTON_DOWN)
+
+    return SDL_APP_CONTINUE;
+}
+
+/* This function runs once per frame, and is the heart of the program. */
+SDL_AppResult SDL_AppIterate(void *appstate)
+{
+    // delta time
+    const Uint64 now = SDL_GetTicks();
+    dt = (float)(now - ticks_prev) / 1000.0f;
+    ticks_prev = now;
+
+    // movement relative to facing
+    D2D_POINT_2F forward = {std::cos(player->angle), std::sin(player->angle)};
+    D2D_POINT_2F right = {-std::sin(player->angle), std::cos(player->angle)};
+
+    D2D_POINT_2F desired = {0.0f, 0.0f};
+    D2D_POINT_2U texture_coords = {0.0f, 0.0f};
+
+    D2D1_SIZE_F rtSize = pRenderTarget->GetSize();
+    const int width = static_cast<int>(rtSize.width);
+    const int height = static_cast<int>(rtSize.height);
+
+    // Inputs
     {
-        if (event->button.button == SDL_BUTTON_LEFT)
+        const bool *key_states = SDL_GetKeyboardState(NULL);
+        D2D_POINT_2F mousePos = D2D1::Point2F(0.0f, 0.0f);
+        Uint32 mouseInputs = SDL_GetMouseState(&mousePos.x, &mousePos.y);
+
+        if (mouseInputs & SDL_BUTTON_MASK(SDL_BUTTON_LEFT))
         {
             // 1. Calculate the ray direction for the center of the screen
             // The center ray is simply the player's view direction.
@@ -170,29 +196,6 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
                 }
             }
         }
-    }
-
-    return SDL_APP_CONTINUE;
-}
-
-/* This function runs once per frame, and is the heart of the program. */
-SDL_AppResult SDL_AppIterate(void *appstate)
-{
-    // delta time
-    const Uint64 now = SDL_GetTicks();
-    dt = (float)(now - ticks_prev) / 1000.0f;
-    ticks_prev = now;
-
-    // movement relative to facing
-    D2D_POINT_2F forward = {std::cos(player->angle), std::sin(player->angle)};
-    D2D_POINT_2F right = {-std::sin(player->angle), std::cos(player->angle)};
-
-    D2D_POINT_2F desired = {0.0f, 0.0f};
-    D2D_POINT_2U texture_coords = {0.0f, 0.0f};
-
-    // Inputs
-    {
-        const bool *key_states = SDL_GetKeyboardState(NULL);
 
         if (key_states[SDL_SCANCODE_W])
         {
@@ -230,11 +233,9 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         }
 
         // Mouse position reset
-        D2D_POINT_2F mousePos = D2D1::Point2F(0.0f, 0.0f);
-        SDL_GetMouseState(&mousePos.x, &mousePos.y);
-        if (mousePos.x < 20.0f || mousePos.y < 20.0f || mousePos.x > 1200.0f || mousePos.y > 700.0f)
+        if (mousePos.x < 50.0f || mousePos.y < 50.0f || mousePos.x > width - 50.0f || mousePos.y > height - 50.0f)
         {
-            SDL_WarpMouseInWindow(window, 640.0f, 360.0f);
+            SDL_WarpMouseInWindow(window, width / 2.0f, height / 2.0f);
         }
     }
 
@@ -263,10 +264,6 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     {
         pRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
         pRenderTarget->Clear(D2D1::ColorF(D2D1::ColorF::Black));
-
-        D2D1_SIZE_F rtSize = pRenderTarget->GetSize();
-        const int width = static_cast<int>(rtSize.width);
-        const int height = static_cast<int>(rtSize.height);
 
         // draw ceiling and floor as two rects
         const float halfH = rtSize.height * 0.5f;

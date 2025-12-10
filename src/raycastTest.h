@@ -7,8 +7,6 @@
 
 class EnemyManager;
 
-const float cameraHeight = 0.66f; // height of player camera(1.0 is ceiling, 0.0 is floor)
-
 const int texture_size = 512;      // size(width and height) of texture that will hold all wall textures
 const int texture_wall_size = 128; // size(width and height) of each wall type in the full texture
 
