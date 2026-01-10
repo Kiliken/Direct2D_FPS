@@ -1,4 +1,5 @@
 #include "raycastTest.h"
+#include "EnemyManager.h"
 
 
 char getTile(int x, int y)
@@ -111,4 +112,52 @@ SDL_Color GetPixelColor(SDL_Surface* surface, int x, int y)
     }
 
     return color;
+}
+
+// Implement the function to check for the closest enemy hit
+float checkEnemyHit(const D2D_POINT_2F &rayPos, const D2D_POINT_2F &rayDir, D2D_POINT_2F &hitPos, EnemyManager &enemyManager)
+{
+    float closestDist = 1e30f;
+    hitPos = {0.0f, 0.0f};
+
+    for (const auto &e : enemyManager.enemies)
+    {
+        // Vector from ray origin (player pos) to enemy
+        D2D_POINT_2F v = {e.pos.x - rayPos.x, e.pos.y - rayPos.y};
+
+        // Calculate the component of v along the ray direction (rayDir is unit length)
+        float distAlongRay = v.x * rayDir.x + v.y * rayDir.y;
+
+        // Check if the enemy is in front of the player
+        if (distAlongRay <= 0.0f)
+            continue;
+
+        // Projection of v onto rayDir is (distAlongRay * rayDir)
+        D2D_POINT_2F proj = {distAlongRay * rayDir.x, distAlongRay * rayDir.y};
+
+        // Vector perpendicular from the ray to the enemy center
+        D2D_POINT_2F perp = {v.x - proj.x, v.y - proj.y};
+        float perpDist2 = perp.x * perp.x + perp.y * perp.y;
+        float perpDist = std::sqrt(perpDist2);
+
+        // Assuming enemy size is around 0.5 tiles for a hit
+        // This is a simplified check that assumes a circular bounding box of radius 0.5 around the enemy center.
+        const float enemyRadius = 0.5f;
+
+        if (perpDist < enemyRadius)
+        {
+            // The ray hits the billboard's bounding circle.
+            // Now find the distance to the hit point on the circle edge
+            float distToEdge = distAlongRay - std::sqrt(enemyRadius * enemyRadius - perpDist2);
+
+            if (distToEdge < closestDist)
+            {
+                closestDist = distToEdge;
+                hitPos.x = rayPos.x + closestDist * rayDir.x;
+                hitPos.y = rayPos.y + closestDist * rayDir.y;
+            }
+        }
+    }
+
+    return closestDist;
 }

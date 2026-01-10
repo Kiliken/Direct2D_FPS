@@ -3,7 +3,14 @@
 
 // constructor containing rng initialization
 EnemyManager::EnemyManager() : rng((unsigned)std::random_device{}()) {}
-EnemyManager::~EnemyManager() {}
+EnemyManager::~EnemyManager() 
+{
+    if (enemyBmp)
+    {
+        enemyBmp->Release(); // D2D resources use Release()
+        enemyBmp = nullptr;
+    }
+}
 
 // Reset enemy manager state
 void EnemyManager::Reset()
@@ -162,4 +169,25 @@ void EnemyManager::RenderBillboards(ID2D1HwndRenderTarget *rt,
     rt->DrawBitmap(
         enemyBmp,
         D2D1::RectF(0, 0, (FLOAT)width, (FLOAT)height));
+}
+
+// Remove an enemy if its position is within 'proximity' of 'worldPos'
+bool EnemyManager::RemoveEnemyAt(const D2D_POINT_2F &worldPos, float proximity)
+{
+    float proximitySq = proximity * proximity;
+
+    // Use erase-remove idiom to safely remove the first enemy found
+    auto it = std::remove_if(enemies.begin(), enemies.end(),
+                             [&](const Enemy &e) {
+                                 float dx = e.pos.x - worldPos.x;
+                                 float dy = e.pos.y - worldPos.y;
+                                 return (dx * dx + dy * dy) < proximitySq;
+                             });
+
+    if (it != enemies.end())
+    {
+        enemies.erase(it, enemies.end());
+        return true; // Enemy was removed
+    }
+    return false; // No enemy removed
 }

@@ -40,11 +40,15 @@ ID2D1Bitmap *bitmap = NULL;
 D2D1_SIZE_U size;
 std::vector<BYTE> pixels;
 
+// Crosshair
+D2D1_ELLIPSE crosshair;
+D2D1_RECT_F crossCenter;
+
 /* This function runs once at startup. */
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
     /* Create the window */
-    if (!SDL_CreateWindowAndRenderer("D2DFPS", 1920, 1080, SDL_WINDOW_ALWAYS_ON_TOP, &window, &renderer))
+    if (!SDL_CreateWindowAndRenderer("D2DFPS", 1280, 720, SDL_WINDOW_ALWAYS_ON_TOP, &window, &renderer))
     {
         SDL_Log("Couldn't create window and renderer: %s", SDL_GetError());
         return SDL_APP_FAILURE;
@@ -88,11 +92,18 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     pRenderTarget->CreateBitmap(
         size,
         pixels.data(), // pointer to pixel buffer
-        width * 4,      // pitch (stride in bytes)
+        width * 4,     // pitch (stride in bytes)
         &bmpProps,
         &bitmap);
 
     enemyManager.CreateBillboardRenderer(pRenderTarget, width, height);
+
+    crosshair = D2D1::Ellipse(
+        D2D1::Point2F((FLOAT)(width / 2), (FLOAT)(height / 2)),
+        25.0f,
+        25.0f);
+
+    crossCenter = D2D1::RectF(width / 2 - 1, height / 2 - 1, width / 2 + 1, height / 2 + 1);
 
     // textureBitmap = SDL_ConvertSurface(textureBitmap, SDL_PIXELFORMAT_BGRA32);
 
@@ -148,9 +159,43 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     D2D_POINT_2F desired = {0.0f, 0.0f};
     D2D_POINT_2U texture_coords = {0.0f, 0.0f};
 
+    D2D1_SIZE_F rtSize = pRenderTarget->GetSize();
+    const int width = static_cast<int>(rtSize.width);
+    const int height = static_cast<int>(rtSize.height);
+
     // Inputs
     {
         const bool *key_states = SDL_GetKeyboardState(NULL);
+        D2D_POINT_2F mousePos = D2D1::Point2F(0.0f, 0.0f);
+        Uint32 mouseInputs = SDL_GetMouseState(&mousePos.x, &mousePos.y);
+
+        if (mouseInputs & SDL_BUTTON_MASK(SDL_BUTTON_LEFT))
+        {
+            // 1. Calculate the ray direction for the center of the screen
+            // The center ray is simply the player's view direction.
+            D2D_POINT_2F rayDir = {std::cos(player->angle), std::sin(player->angle)};
+
+            // 2. Check for an enemy hit along the ray
+            D2D_POINT_2F hitPos;
+            const float enemyCheckProximity = 0.5f; // A small radius around the hit point to confirm the enemy's center is close
+
+            // The wall rendering already calculates the perpWallDist for the center ray (x=width/2, camX=0).
+            // We use the new checkEnemyHit for accurate sprite hit.
+            float hitDistance = checkEnemyHit(player->pos, rayDir, hitPos, enemyManager);
+
+            // 3. Compare hit distance with the closest enemy.
+            // A basic check to see if an enemy was hit (hitDistance is not the initial 1e30f value).
+            if (hitDistance < 1e30f)
+            {
+                // An enemy was hit. Remove it.
+                // The hitPos is where the *ray* hit the enemy bounding circle.
+                // We use a small proximity check to remove the enemy whose center is closest to the hitPos.
+                if (enemyManager.RemoveEnemyAt(hitPos, enemyCheckProximity))
+                {
+                    SDL_Log("Enemy destroyed at distance: %f", hitDistance);
+                }
+            }
+        }
 
         if (key_states[SDL_SCANCODE_W])
         {
@@ -188,11 +233,9 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         }
 
         // Mouse position reset
-        D2D_POINT_2F mousePos = D2D1::Point2F(0.0f, 0.0f);
-        SDL_GetMouseState(&mousePos.x, &mousePos.y);
-        if (mousePos.x < 20.0f || mousePos.y < 20.0f || mousePos.x > 1200.0f || mousePos.y > 700.0f)
+        if (mousePos.x < 50.0f || mousePos.y < 50.0f || mousePos.x > width - 50.0f || mousePos.y > height - 50.0f)
         {
-            SDL_WarpMouseInWindow(window, 640.0f, 360.0f);
+            SDL_WarpMouseInWindow(window, width / 2.0f, height / 2.0f);
         }
     }
 
@@ -221,10 +264,6 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     {
         pRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
         pRenderTarget->Clear(D2D1::ColorF(D2D1::ColorF::Black));
-
-        D2D1_SIZE_F rtSize = pRenderTarget->GetSize();
-        const int width = static_cast<int>(rtSize.width);
-        const int height = static_cast<int>(rtSize.height);
 
         // draw ceiling and floor as two rects
         const float halfH = rtSize.height * 0.5f;
@@ -390,6 +429,9 @@ SDL_AppResult SDL_AppIterate(void *appstate)
             D2D1::RectF(0, 0, (FLOAT)width, (FLOAT)height));
 
         enemyManager.RenderBillboards(pRenderTarget, enemyBrush, textureBitmap, depthBuffer, width, height, halfH, player->pos, player->angle, planeHalf);
+
+        pRenderTarget->DrawEllipse(crosshair, enemyBrush);
+        pRenderTarget->DrawRectangle(crossCenter, enemyBrush);
     }
 
     pRenderTarget->EndDraw();
@@ -419,7 +461,7 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
     delete player;
     player = nullptr;
 
-    delete &enemyManager;
+    // delete &enemyManager; // crash risk
 
     if (bitmap)
     {
