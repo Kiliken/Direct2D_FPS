@@ -31,7 +31,7 @@ public:
 
 private:
     float spawnAccumulator = 0.0f;
-    static const int maxEnemies = 20;
+    static const int maxEnemies = 1;
     std::mt19937 rng;
 
     // Sprite

@@ -67,7 +67,7 @@ void EnemyManager::Update(float dt, const D2D_POINT_2F &playerPos)
 
     for (auto &e : enemies)
     {
-        e.Update(dt);
+        e.Update(dt, playerPos);
         e.TryAttack(playerPos);
     }
 }
