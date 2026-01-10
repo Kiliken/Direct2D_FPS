@@ -3,7 +3,7 @@
     {
       "name": "Win64-MSVC",
       "includePath": [
-        "${workspaceFolder}/SDL3-3.*/include",
+        "${workspaceFolder}/dep/include",
         "${workspaceFolder}/src",
         "${workspaceFolder}"
       ],

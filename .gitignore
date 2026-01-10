@@ -43,5 +43,11 @@
 
 # Project Specific
 *.zip
-/[Ss]DL3-3.2.26/
+*tar.gz
+/[Dd]ep/
+/[Bb]uild/
+!/[Rr]es/[Ee]mbed/*.o
 *.cso
+
+# Temp
+/setup/SDL3-3.2.26/
