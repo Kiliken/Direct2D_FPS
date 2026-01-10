@@ -1,3 +1,5 @@
+#pragma once
+
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <Windows.h>
@@ -15,4 +17,5 @@ public:
     float angle = 0.0f; // radians
     float moveSpeed = 4.0f; // tiles per second basis; scaled by dt
     float rotSpeed = 1.8f;  // radians per second
+    float size_f = 0.375f; //player radius
 };
