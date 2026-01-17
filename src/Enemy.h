@@ -5,6 +5,12 @@
 #include <vector>
 #include "Pathfinding.h"
 
+// New: type of enemy so we can support stationary targets
+enum class EnemyType {
+    Walker,
+    Target // stationary target that doesn't move or attack
+};
+
 struct Enemy {
     D2D_POINT_2F pos;
     int hp = 1;
@@ -13,17 +19,19 @@ struct Enemy {
     float timeSinceAttack = 0.0f;
     float attackRange = 1.2f; // tiles
 
-    // Pathfollowing
+    // Pathfollowing (ignored for Target)
     float moveSpeed = 1.2f;        // tiles per second
-    float repathInterval = 2.0f;  // seconds
+    float repathInterval = 2.0f;   // seconds
     float timeSinceRepath = 0.0f;
     std::vector<IPoint> path;
     int pathIndex = 0;
     bool haveLastPlayerTile = false;
     IPoint lastPlayerTile{0,0};
 
-    Enemy() : pos{0.f, 0.f} {}
-    explicit Enemy(D2D_POINT_2F p) : pos{p} {}
+    EnemyType type = EnemyType::Walker;
+
+    Enemy() : pos{0.f, 0.f}, type(EnemyType::Walker) {}
+    explicit Enemy(D2D_POINT_2F p, EnemyType t = EnemyType::Walker) : pos{p}, type(t) {}
 
     // Update with player position (required for pathfinding)
     void Update(float dt, const D2D_POINT_2F &playerPos);
@@ -33,4 +41,5 @@ struct Enemy {
 private:
     void EnsurePath(const IPoint& myTile, const IPoint& playerTile);
     void MoveAlongPath(float dt);
-};
+}
+;

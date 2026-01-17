@@ -5,9 +5,7 @@
 #include "raycastTest.h" // for canMove, getTile
 
 static inline float length2(float x, float y) { return x*x + y*y; }
-
 static inline float length(float x, float y) { return std::sqrt(length2(x,y)); }
-
 
 // Helper: find nearest walkable tile around a center within a given radius
 static IPoint FindNearestWalkableAround(const IPoint& center, int maxRadius)
@@ -29,10 +27,14 @@ static IPoint FindNearestWalkableAround(const IPoint& center, int maxRadius)
     return center; // fallback to center; A* will return empty if not walkable
 }
 
-
 // Update enemy state and pathfollow toward player
 void Enemy::Update(float dt, const D2D_POINT_2F &playerPos)
 {
+    // Stationary targets do not move or pathfind
+    if (type == EnemyType::Target) {
+        return;
+    }
+
     timeSinceAttack += dt;
     timeSinceRepath += dt;
 
@@ -50,10 +52,14 @@ void Enemy::Update(float dt, const D2D_POINT_2F &playerPos)
     MoveAlongPath(dt);
 }
 
-
 // Attempt to attack the player
 bool Enemy::TryAttack(const D2D_POINT_2F &playerPos)
 {
+    // Stationary targets don't attack
+    if (type == EnemyType::Target) {
+        return false;
+    }
+
     float dx = pos.x - playerPos.x;
     float dy = pos.y - playerPos.y;
     float dist = std::sqrt(dx*dx + dy*dy);
@@ -66,7 +72,6 @@ bool Enemy::TryAttack(const D2D_POINT_2F &playerPos)
     return false;
 }
 
-
 void Enemy::EnsurePath(const IPoint& myTile, const IPoint& playerTile)
 {
     char myChar = InBounds(myTile.x, myTile.y) ? getTile(myTile.x, myTile.y) : '?';
@@ -78,69 +83,39 @@ void Enemy::EnsurePath(const IPoint& myTile, const IPoint& playerTile)
 
     IPoint goal = playerTile;
     if (!IsWalkable(goal.x, goal.y)) {
-        // Player might be standing at a non-floor tile edge; pick nearest floor tile
-        goal = FindNearestWalkableAround(playerTile, /*maxRadius=*/4);
-        char gChar = InBounds(goal.x, goal.y) ? getTile(goal.x, goal.y) : '?';
-        SDL_Log("EnsurePath: player tile not walkable, using nearest walkable goal=(%d,%d,'%c')",
-                goal.x, goal.y, gChar);
+        goal = FindNearestWalkableAround(goal, 3);
     }
 
-    if (!IsWalkable(myTile.x, myTile.y)) {
-        SDL_Log("EnsurePath: Enemy start tile not walkable, clearing path");
-        path.clear();
-        pathIndex = 0;
-        return;
-    }
-
+    // compute new path with A*
     path = AStarTilePath(myTile, goal);
     pathIndex = 0;
-
-    SDL_Log("EnsurePath: path length = %d", (int)path.size());
 }
-
 
 void Enemy::MoveAlongPath(float dt)
 {
-    if (path.empty() || pathIndex >= (int)path.size()) return;
-
-    // Next waypoint (tile center)
-    const IPoint nextTile = path[pathIndex];
-    D2D_POINT_2F target = TileCenter(nextTile);
-
-    float dx = target.x - pos.x;
-    float dy = target.y - pos.y;
-    float dist = length(dx, dy);
-
-    // Consider tile reached if close to center
-    const float arriveRadius = 0.20f; // tiles (increased to reduce jitter)
-    if (dist <= arriveRadius) {
-        ++pathIndex;
-        if (pathIndex >= (int)path.size()) return;
-        D2D_POINT_2F nextTarget = TileCenter(path[pathIndex]);
-        dx = nextTarget.x - pos.x;
-        dy = nextTarget.y - pos.y;
-        dist = length(dx, dy);
+    if (path.empty() || pathIndex >= (int)path.size()) {
+        return;
     }
 
-    if (dist > 1e-5f) {
-        float vx = (dx / dist) * moveSpeed;
-        float vy = (dy / dist) * moveSpeed;
-        D2D_POINT_2F desired = { pos.x + vx * dt, pos.y + vy * dt };
+    IPoint nextTile = path[pathIndex];
+    D2D_POINT_2F targetPos = TileCenter(nextTile);
 
-        // simple collision check, similar to player
-        D2D_POINT_2F size = {0.35f, 0.35f};
-        if (canMove(desired, size)) {
-            pos = desired;
-        } else {
-            // try axis-wise movement to slide along walls (limit slide distance to reduce jitter)
-            D2D_POINT_2F desiredX = { pos.x + vx * dt, pos.y };
-            D2D_POINT_2F desiredY = { pos.x, pos.y + vy * dt };
-            bool moved = false;
-            if (canMove(desiredX, size)) { pos = desiredX; moved = true; }
-            if (!moved && canMove(desiredY, size)) { pos = desiredY; moved = true; }
-            if (!moved) {
-                // Blocked; path will be reconsidered next tick
-            }
-        }
+    float dx = targetPos.x - pos.x;
+    float dy = targetPos.y - pos.y;
+    float dist = std::sqrt(dx*dx + dy*dy);
+    if (dist < 0.05f) {
+        pathIndex++;
+        return;
+    }
+
+    float vx = (dx / dist) * moveSpeed;
+    float vy = (dy / dist) * moveSpeed;
+
+    D2D_POINT_2F nextPos = { pos.x + vx * dt, pos.y + vy * dt };
+    if (canMove(nextPos, {0.3f, 0.3f})) {
+        pos = nextPos;
+    } else {
+        // If blocked, re-path on next update cycle
+        timeSinceRepath = repathInterval;
     }
 }
