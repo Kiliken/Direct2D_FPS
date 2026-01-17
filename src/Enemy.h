@@ -15,7 +15,7 @@ struct Enemy {
 
     // Pathfollowing
     float moveSpeed = 1.2f;        // tiles per second
-    float repathInterval = 0.25f;  // seconds
+    float repathInterval = 2.0f;  // seconds
     float timeSinceRepath = 0.0f;
     std::vector<IPoint> path;
     int pathIndex = 0;
