@@ -45,7 +45,8 @@
 *.zip
 *tar.gz
 /[Dd]ep/
-/[Bb]uild/
+/[Bb]uild/*
+# !/[Bb]uild/[Aa]ssets/
 !/[Rr]es/[Ee]mbed/*.o
 *.cso
 

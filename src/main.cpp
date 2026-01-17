@@ -5,12 +5,17 @@
 #include <Windows.h>
 #include <wincodec.h>
 #include <unordered_map>
+#include <d3d11.h>
 #include <d2d1.h>
 #include <cmath>
 #include <vector>
 #include <random>
 #include <algorithm>
 #include <iostream>
+#include <imgui/imgui.h>
+#include <imgui/imgui_impl_sdl3.h>
+#include <imgui/imgui_impl_dx11.h>
+
 #include "raycastTest.h"
 #include "Player.h"
 #include "EnemyManager.h"
@@ -20,6 +25,11 @@ static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
 static ID2D1Factory *pFactory = NULL;
 static ID2D1HwndRenderTarget *pRenderTarget = NULL;
+
+static ID3D11Device *g_pd3dDevice = NULL;
+static ID3D11DeviceContext *g_pd3dDeviceContext = NULL;
+static IDXGISwapChain *g_pSwapChain = NULL;
+static ID3D11RenderTargetView *g_mainRenderTargetView = NULL;
 
 // Game Stuff
 static Player *player = NULL;
@@ -44,11 +54,19 @@ std::vector<BYTE> pixels;
 D2D1_ELLIPSE crosshair;
 D2D1_RECT_F crossCenter;
 
+// In Main Functions
+bool CreateDeviceD3D(HWND hWnd);
+void CleanupDeviceD3D();
+void CreateRenderTarget();
+void CleanupRenderTarget();
+
 /* This function runs once at startup. */
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
+
+    SDL_WindowFlags window_flags = SDL_WINDOW_HIGH_PIXEL_DENSITY;
     /* Create the window */
-    if (!SDL_CreateWindowAndRenderer("D2DFPS", 1280, 720, SDL_WINDOW_ALWAYS_ON_TOP, &window, &renderer))
+    if (!SDL_CreateWindowAndRenderer("D2DFPS", 1280, 720, window_flags, &window, &renderer))
     {
         SDL_Log("Couldn't create window and renderer: %s", SDL_GetError());
         return SDL_APP_FAILURE;
@@ -60,6 +78,13 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
                                              SDL_PROP_WINDOW_WIN32_HWND_POINTER,
                                              NULL);
 
+    
+    if (!CreateDeviceD3D(hwnd))
+    {
+        CleanupDeviceD3D();
+        return SDL_APP_FAILURE;
+    }
+    
     D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &pFactory);
 
     RECT rc;
@@ -109,6 +134,27 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 
     // pRenderTarget->CreateBitmap(D2D1::SizeU(textureBitmap->w, textureBitmap->h), textureBitmap->pixels, textureBitmap->pitch, &bmpProps, &wallTexture);
 
+
+    // Setup Dear ImGui context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+
+    // Setup Dear ImGui style
+    ImGui::StyleColorsDark();
+    //ImGui::StyleColorsLight();
+
+    // Setup scaling
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.ScaleAllSizes(1.0f);        // Bake a fixed style scale. (until we have a solution for dynamic style scaling, changing this requires resetting Style + calling this again)
+    style.FontScaleDpi = 1.0f;        // Set initial font scale. (using io.ConfigDpiScaleFonts=true makes this unnecessary. We leave both here for documentation purpose)
+
+    // Setup Platform/Renderer backends
+    ImGui_ImplSDL3_InitForD3D(window);
+    ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
+
     if (!mapCheck())
     {
         fprintf(stderr, "Map is invalid!\n");
@@ -121,6 +167,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 /* This function runs when a new event (mouse input, keypresses, etc) occurs. */
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
+    ImGui_ImplSDL3_ProcessEvent(event);
     if (event->type == SDL_EVENT_QUIT)
     {
         return SDL_APP_SUCCESS; /* end the program, reporting success to the OS. */
@@ -148,8 +195,8 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
     // delta time
-    const Uint64 now = SDL_GetTicks();
-    dt = (float)(now - ticks_prev) / 1000.0f;
+    const Uint64 now = SDL_GetPerformanceCounter();
+    dt = (float)(now - ticks_prev) / (float)SDL_GetPerformanceFrequency();
     ticks_prev = now;
 
     // movement relative to facing
@@ -436,12 +483,33 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 
     pRenderTarget->EndDraw();
 
+    // Start the Dear ImGui frame
+    ImGui_ImplDX11_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
+    ImGui::NewFrame();
+
+    ImGui::ShowDemoWindow();
+
+    ImGui::Render();
+    const float clear_color_with_alpha[4] = {0, 0, 0, 0};
+    g_pd3dDeviceContext->OMSetRenderTargets(1, &g_mainRenderTargetView, nullptr);
+    g_pd3dDeviceContext->ClearRenderTargetView(g_mainRenderTargetView, clear_color_with_alpha);
+    ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+
+    g_pSwapChain->Present(1, 0); // Present with vsync
+
     return SDL_APP_CONTINUE;
 }
 
 /* This function runs once at shutdown. */
 void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
+    ImGui_ImplDX11_Shutdown();
+    ImGui_ImplSDL3_Shutdown();
+    ImGui::DestroyContext();
+
+    CleanupDeviceD3D();
+
     if (textureBitmap)
     {
         SDL_DestroySurface(textureBitmap);
@@ -497,5 +565,79 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
     {
         enemyBrush->Release();
         enemyBrush = nullptr;
+    }
+}
+
+bool CreateDeviceD3D(HWND hWnd)
+{
+    // Setup swap chain
+    // This is a basic setup. Optimally could use e.g. DXGI_SWAP_EFFECT_FLIP_DISCARD and handle fullscreen mode differently. See #8979 for suggestions.
+    DXGI_SWAP_CHAIN_DESC sd;
+    ZeroMemory(&sd, sizeof(sd));
+    sd.BufferCount = 2;
+    sd.BufferDesc.Width = 0;
+    sd.BufferDesc.Height = 0;
+    sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    sd.BufferDesc.RefreshRate.Numerator = 60;
+    sd.BufferDesc.RefreshRate.Denominator = 1;
+    sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+    sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    sd.OutputWindow = hWnd;
+    sd.SampleDesc.Count = 1;
+    sd.SampleDesc.Quality = 0;
+    sd.Windowed = TRUE;
+    sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+
+    UINT createDeviceFlags = 0;
+    // createDeviceFlags |= D3D11_CREATE_DEVICE_DEBUG;
+    D3D_FEATURE_LEVEL featureLevel;
+    const D3D_FEATURE_LEVEL featureLevelArray[2] = {
+        D3D_FEATURE_LEVEL_11_0,
+        D3D_FEATURE_LEVEL_10_0,
+    };
+    HRESULT res = D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, createDeviceFlags, featureLevelArray, 2, D3D11_SDK_VERSION, &sd, &g_pSwapChain, &g_pd3dDevice, &featureLevel, &g_pd3dDeviceContext);
+    if (res == DXGI_ERROR_UNSUPPORTED) // Try high-performance WARP software driver if hardware is not available.
+        res = D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, createDeviceFlags, featureLevelArray, 2, D3D11_SDK_VERSION, &sd, &g_pSwapChain, &g_pd3dDevice, &featureLevel, &g_pd3dDeviceContext);
+    if (res != S_OK)
+        return false;
+
+    CreateRenderTarget();
+    return true;
+}
+
+void CleanupDeviceD3D()
+{
+    CleanupRenderTarget();
+    if (g_pSwapChain)
+    {
+        g_pSwapChain->Release();
+        g_pSwapChain = nullptr;
+    }
+    if (g_pd3dDeviceContext)
+    {
+        g_pd3dDeviceContext->Release();
+        g_pd3dDeviceContext = nullptr;
+    }
+    if (g_pd3dDevice)
+    {
+        g_pd3dDevice->Release();
+        g_pd3dDevice = nullptr;
+    }
+}
+
+void CreateRenderTarget()
+{
+    ID3D11Texture2D *pBackBuffer;
+    g_pSwapChain->GetBuffer(0, IID_PPV_ARGS(&pBackBuffer));
+    g_pd3dDevice->CreateRenderTargetView(pBackBuffer, nullptr, &g_mainRenderTargetView);
+    pBackBuffer->Release();
+}
+
+void CleanupRenderTarget()
+{
+    if (g_mainRenderTargetView)
+    {
+        g_mainRenderTargetView->Release();
+        g_mainRenderTargetView = nullptr;
     }
 }

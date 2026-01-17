@@ -1,11 +1,14 @@
 @echo off
 
 if exist "%localappdata%/w64cmake/bin"	set PATH=%localappdata%/w64cmake/bin;%PATH%
-if exist "%programfiles%\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" call "%programfiles%\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
-if exist "%programfiles%\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat" call "%programfiles%\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat"
+if exist "%programfiles%\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" goto Compile
+if exist "%programfiles%\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat" goto Compile
+
+exit
+
+:Compile
 
 if not exist "%cd%/build" md build
-
 
 cmake -S %cd% -B %cd%\build -G "Visual Studio 17 2022" -A x64
 

@@ -27,9 +27,8 @@ Copy-Item -Path "$($PSScriptRoot)\SDL3-3.2.26\lib\x64\SDL3.lib" -Destination "$(
 Copy-Item -Path "$($PSScriptRoot)\SDL3-3.2.26\lib\x64\SDL3.dll" -Destination "$($ProjectRoot)\build\Release"
 
 Rename-Item -Path "$($ProjectRoot)\dep\include\imgui-1.92.5" -NewName "imgui"
-Copy-Item -Path "$($ProjectRoot)\dep\include\imgui\backends\imgui_impl_opengl3.cpp" -Destination "$($ProjectRoot)\dep\include\imgui"
-Copy-Item -Path "$($ProjectRoot)\dep\include\imgui\backends\imgui_impl_opengl3.h" -Destination "$($ProjectRoot)\dep\include\imgui"
-Copy-Item -Path "$($ProjectRoot)\dep\include\imgui\backends\imgui_impl_opengl3_loader.h" -Destination "$($ProjectRoot)\dep\include\imgui"
+Copy-Item -Path "$($ProjectRoot)\dep\include\imgui\backends\imgui_impl_dx11.cpp" -Destination "$($ProjectRoot)\dep\include\imgui"
+Copy-Item -Path "$($ProjectRoot)\dep\include\imgui\backends\imgui_impl_dx11.h" -Destination "$($ProjectRoot)\dep\include\imgui"
 Copy-Item -Path "$($ProjectRoot)\dep\include\imgui\backends\imgui_impl_sdl3.cpp" -Destination "$($ProjectRoot)\dep\include\imgui"
 Copy-Item -Path "$($ProjectRoot)\dep\include\imgui\backends\imgui_impl_sdl3.h" -Destination "$($ProjectRoot)\dep\include\imgui"
 
