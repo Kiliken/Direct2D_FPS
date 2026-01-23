@@ -1,11 +1,9 @@
-// main.cpp (UI overlay loads PNG via WIC, fixed no-goto-init-skip, no bmpProps collision)
-
 #define SDL_MAIN_USE_CALLBACKS 1 /* use the callbacks instead of main() */
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
-
 #include <Windows.h>
 #include <wincodec.h>
+#include <dxgiformat.h>
 #include <unordered_map>
 #include <d2d1.h>
 #include <cmath>
@@ -13,12 +11,10 @@
 #include <random>
 #include <algorithm>
 #include <iostream>
-
 #include "raycastTest.h"
 #include "Player.h"
 #include "EnemyManager.h"
 
-// ------------------------------------------------------------
 // Window and Render Stuff
 static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
@@ -40,7 +36,7 @@ ID2D1SolidColorBrush *floorBrush = NULL;
 ID2D1SolidColorBrush *wallBrush = NULL;
 ID2D1SolidColorBrush *enemyBrush = NULL;
 
-// Wall Bitmap (screen-sized)
+// Wall Bitmap
 ID2D1Bitmap *bitmap = NULL;
 D2D1_SIZE_U size;
 std::vector<BYTE> pixels;
@@ -49,27 +45,21 @@ std::vector<BYTE> pixels;
 D2D1_ELLIPSE crosshair;
 D2D1_RECT_F crossCenter;
 
-// ------------------------------------------------------------
-// UI overlay (PNG via WIC)
+// UI overlay
 static ID2D1Bitmap *overlayBmpA = NULL;
 static ID2D1Bitmap *overlayBmpB = NULL;
 static ID2D1Bitmap *overlayBmpCurrent = NULL;
-static float uiFlashTimer = 0.0f;
-static const float uiFlashDuration = 0.08f; // 80ms (tweak: 0.05~0.12)
-
-// Left mouse edge detection
 static bool prevLeftDown = false;
+static float uiFlashTimer = 0.0f;
+static const float uiFlashDuration = 0.08f;
 
-// WIC factory + COM init flag
 static IWICImagingFactory *gWicFactory = NULL;
 static bool gComInitialized = false;
 
 static D2D1_BITMAP_PROPERTIES uiBmpProps =
     D2D1::BitmapProperties(
-        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,
-                          D2D1_ALPHA_MODE_PREMULTIPLIED));
+        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
 
-// Helper: Safe release COM
 template <typename T>
 static void SafeRelease(T *&p)
 {
@@ -105,7 +95,6 @@ static ID2D1Bitmap *LoadD2DBitmapFromFile_WIC(const wchar_t *filename)
 
     if (FAILED(hr))
     {
-        SDL_Log("WIC CreateDecoderFromFilename failed (0x%08X): %ls", (unsigned)hr, filename);
         cleanup();
         return nullptr;
     }
@@ -113,7 +102,6 @@ static ID2D1Bitmap *LoadD2DBitmapFromFile_WIC(const wchar_t *filename)
     hr = decoder->GetFrame(0, &frame);
     if (FAILED(hr))
     {
-        SDL_Log("WIC GetFrame failed (0x%08X): %ls", (unsigned)hr, filename);
         cleanup();
         return nullptr;
     }
@@ -121,12 +109,10 @@ static ID2D1Bitmap *LoadD2DBitmapFromFile_WIC(const wchar_t *filename)
     hr = gWicFactory->CreateFormatConverter(&converter);
     if (FAILED(hr))
     {
-        SDL_Log("WIC CreateFormatConverter failed (0x%08X): %ls", (unsigned)hr, filename);
         cleanup();
         return nullptr;
     }
 
-    // Convert into 32bpp premultiplied BGRA
     hr = converter->Initialize(
         frame,
         GUID_WICPixelFormat32bppPBGRA,
@@ -137,7 +123,6 @@ static ID2D1Bitmap *LoadD2DBitmapFromFile_WIC(const wchar_t *filename)
 
     if (FAILED(hr))
     {
-        SDL_Log("WIC converter Initialize failed (0x%08X): %ls", (unsigned)hr, filename);
         cleanup();
         return nullptr;
     }
@@ -146,7 +131,6 @@ static ID2D1Bitmap *LoadD2DBitmapFromFile_WIC(const wchar_t *filename)
     hr = converter->GetSize(&w, &h);
     if (FAILED(hr) || w == 0 || h == 0)
     {
-        SDL_Log("WIC GetSize failed (0x%08X): %ls", (unsigned)hr, filename);
         cleanup();
         return nullptr;
     }
@@ -162,7 +146,6 @@ static ID2D1Bitmap *LoadD2DBitmapFromFile_WIC(const wchar_t *filename)
 
     if (FAILED(hr))
     {
-        SDL_Log("WIC CopyPixels failed (0x%08X): %ls", (unsigned)hr, filename);
         cleanup();
         return nullptr;
     }
@@ -175,14 +158,11 @@ static ID2D1Bitmap *LoadD2DBitmapFromFile_WIC(const wchar_t *filename)
         &uiBmpProps,
         &outBmp);
 
-    if (FAILED(hr))
-    {
-        SDL_Log("D2D CreateBitmap (overlay) failed (0x%08X): %ls", (unsigned)hr, filename);
-        cleanup();
-        return nullptr;
-    }
-
     cleanup();
+
+    if (FAILED(hr))
+        return nullptr;
+
     return outBmp;
 }
 
@@ -198,7 +178,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 
     SDL_HideCursor();
 
-    // Init COM for WIC (safe even if other parts don't use COM)
     HRESULT comHr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     if (SUCCEEDED(comHr))
     {
@@ -206,18 +185,13 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     }
     else if (comHr == RPC_E_CHANGED_MODE)
     {
-        // COM already initialized with a different threading model; still OK for WIC sometimes.
-        // We'll continue, but WIC might fail on some setups.
         gComInitialized = false;
-        SDL_Log("Warning: CoInitializeEx returned RPC_E_CHANGED_MODE. Continuing.");
     }
     else
     {
-        SDL_Log("CoInitializeEx failed: 0x%08X", (unsigned)comHr);
         return SDL_APP_FAILURE;
     }
 
-    /* Get HWND */
     HWND hwnd = (HWND)SDL_GetPointerProperty(SDL_GetWindowProperties(window),
                                              SDL_PROP_WINDOW_WIN32_HWND_POINTER,
                                              NULL);
@@ -233,7 +207,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
                                          D2D1::SizeU(rc.right - rc.left, rc.bottom - rc.top)),
         &pRenderTarget);
 
-    // Create WIC factory
     HRESULT hr = CoCreateInstance(
         CLSID_WICImagingFactory,
         nullptr,
@@ -242,7 +215,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 
     if (FAILED(hr) || !gWicFactory)
     {
-        SDL_Log("Failed to create WIC Imaging Factory: 0x%08X", (unsigned)hr);
         return SDL_APP_FAILURE;
     }
 
@@ -262,49 +234,38 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.9f, 0.9f, 0.9f, 1.0f), &wallBrush);
     pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 0.0f, 0.0f, 1.0f), &enemyBrush);
 
-    // Load wall texture atlas (still BMP via SDL, since you sample pixels from it)
-    textureBitmap = SDL_LoadBMP("../Assets/walls.bmp");
-    if (!textureBitmap)
-    {
-        SDL_Log("Failed to load walls.bmp: %s", SDL_GetError());
-        return SDL_APP_FAILURE;
-    }
+    textureBitmap = SDL_LoadBMP("./Assets/walls.bmp");
 
-    // Create screen-sized bitmap we will update each frame
-    hr = pRenderTarget->CreateBitmap(
+    pRenderTarget->CreateBitmap(
         size,
-        pixels.data(),
-        width * 4,
-        &uiBmpProps,
+        pixels.data(), // pointer to pixel buffer
+        width * 4,     // pitch (stride in bytes)
+        &bmpProps,
         &bitmap);
 
-    if (FAILED(hr) || !bitmap)
-    {
-        SDL_Log("CreateBitmap (screen) failed: 0x%08X", (unsigned)hr);
-        return SDL_APP_FAILURE;
-    }
-
     enemyManager.CreateBillboardRenderer(pRenderTarget, width, height);
+
     enemyManager.InitializeTargets(5, player->pos);
 
     crosshair = D2D1::Ellipse(
         D2D1::Point2F((FLOAT)(width / 2), (FLOAT)(height / 2)),
-        25.0f, 25.0f);
+        25.0f,
+        25.0f);
 
     crossCenter = D2D1::RectF(width / 2 - 1, height / 2 - 1, width / 2 + 1, height / 2 + 1);
 
-    // ------------------------------------------------------------
-    // Load overlay PNGs via WIC
-    overlayBmpA = LoadD2DBitmapFromFile_WIC(L"../Assets/ui_a.png");
-    overlayBmpB = LoadD2DBitmapFromFile_WIC(L"../Assets/ui_b.png");
+    // textureBitmap = SDL_ConvertSurface(textureBitmap, SDL_PIXELFORMAT_BGRA32);
+
+    // pRenderTarget->CreateBitmap(D2D1::SizeU(textureBitmap->w, textureBitmap->h), textureBitmap->pixels, textureBitmap->pitch, &bmpProps, &wallTexture);
+
+    overlayBmpA = LoadD2DBitmapFromFile_WIC(L"./Assets/ui_a.png");
+    overlayBmpB = LoadD2DBitmapFromFile_WIC(L"./Assets/ui_b.png");
+    overlayBmpCurrent = overlayBmpA;
 
     if (!overlayBmpA || !overlayBmpB)
     {
-        SDL_Log("Failed to load overlay PNGs. Ensure ../Assets/ui_a.png and ../Assets/ui_b.png exist.");
         return SDL_APP_FAILURE;
     }
-
-    overlayBmpCurrent = overlayBmpA;
 
     if (!mapCheck())
     {
@@ -320,7 +281,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
     if (event->type == SDL_EVENT_QUIT)
     {
-        return SDL_APP_SUCCESS;
+        return SDL_APP_SUCCESS; /* end the program, reporting success to the OS. */
     }
 
     if (event->type == SDL_EVENT_WINDOW_RESIZED)
@@ -333,7 +294,8 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 
     if (event->type == SDL_EVENT_MOUSE_MOTION)
     {
-        const float sensitivity = 0.0025f;
+        // mouse horizontal movement rotates view
+        const float sensitivity = 0.0025f; // radians per pixel
         player->angle += event->motion.xrel * sensitivity;
     }
 
@@ -343,15 +305,17 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 /* This function runs once per frame, and is the heart of the program. */
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
+    // delta time
     const Uint64 now = SDL_GetTicks();
     dt = (float)(now - ticks_prev) / 1000.0f;
     ticks_prev = now;
 
+    // movement relative to facing
     D2D_POINT_2F forward = {std::cos(player->angle), std::sin(player->angle)};
     D2D_POINT_2F right = {-std::sin(player->angle), std::cos(player->angle)};
 
     D2D_POINT_2F desired = {0.0f, 0.0f};
-    D2D_POINT_2U texture_coords = {0, 0};
+    D2D_POINT_2U texture_coords = {0.0f, 0.0f};
 
     D2D1_SIZE_F rtSize = pRenderTarget->GetSize();
     const int width = static_cast<int>(rtSize.width);
@@ -364,30 +328,39 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         Uint32 mouseInputs = SDL_GetMouseState(&mousePos.x, &mousePos.y);
 
         const bool leftDown = (mouseInputs & SDL_BUTTON_MASK(SDL_BUTTON_LEFT)) != 0;
-
-        // Toggle overlay ONCE per click (edge detect)
         if (leftDown && !prevLeftDown)
         {
-            overlayBmpCurrent = overlayBmpB; // show POW
-            uiFlashTimer = uiFlashDuration;  // start countdown
+            overlayBmpCurrent = overlayBmpB;
+            uiFlashTimer = uiFlashDuration;
         }
         prevLeftDown = leftDown;
 
-        // Your existing shooting logic (kept)
-        if (leftDown)
+        if (mouseInputs & SDL_BUTTON_MASK(SDL_BUTTON_LEFT))
         {
+            // 1. Calculate the ray direction for the center of the screen
+            // The center ray is simply the player's view direction.
             D2D_POINT_2F rayDir = {std::cos(player->angle), std::sin(player->angle)};
-            D2D_POINT_2F hitPos;
-            const float enemyCheckProximity = 0.5f;
 
+            // 2. Check for an enemy hit along the ray
+            D2D_POINT_2F hitPos;
+            const float enemyCheckProximity = 0.5f; // A small radius around the hit point to confirm the enemy's center is close
+
+            // The wall rendering already calculates the perpWallDist for the center ray (x=width/2, camX=0).
+            // We use the new checkEnemyHit for accurate sprite hit.
             float hitDistance = checkEnemyHit(player->pos, rayDir, hitPos, enemyManager);
 
+            // 3. Compare hit distance with the closest enemy.
+            // A basic check to see if an enemy was hit (hitDistance is not the initial 1e30f value).
             if (hitDistance < 1e30f)
             {
+                // An enemy was hit. Remove it.
+                // The hitPos is where the *ray* hit the enemy bounding circle.
+                // We use a small proximity check to remove the enemy whose center is closest to the hitPos.
                 if (enemyManager.RemoveEnemyAt(hitPos, enemyCheckProximity))
                 {
                     SDL_Log("Enemy destroyed at distance: %f", hitDistance);
 
+                    // If all targets are gone, mark game clear, stop spawning, and destroy all enemies
                     if (enemyManager.CountTargets() == 0)
                     {
                         gameClear = true;
@@ -420,6 +393,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
             desired.y += right.y;
         }
 
+        // optional keyboard rotation
         if (key_states[SDL_SCANCODE_Q])
         {
             player->angle -= player->rotSpeed * dt;
@@ -428,12 +402,12 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         {
             player->angle += player->rotSpeed * dt;
         }
-
         if (key_states[SDL_SCANCODE_ESCAPE])
         {
             return SDL_APP_SUCCESS;
         }
 
+        // Mouse position reset
         if (mousePos.x < 50.0f || mousePos.y < 50.0f || mousePos.x > width - 50.0f || mousePos.y > height - 50.0f)
         {
             SDL_WarpMouseInWindow(window, width / 2.0f, height / 2.0f);
@@ -441,6 +415,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     }
 
     // Update
+    // normalize desired
     float len = std::sqrt(desired.x * desired.x + desired.y * desired.y);
     if (len > 0.0001f)
     {
@@ -450,9 +425,9 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 
     D2D_POINT_2F nextPos = {player->pos.x + desired.x * player->moveSpeed * dt,
                             player->pos.y + desired.y * player->moveSpeed * dt};
-
-    D2D_POINT_2F playerSize = {0.35f, 0.35f};
-    if (canMove(nextPos, playerSize))
+    // collision: player radius ~0.25 tiles
+    D2D_POINT_2F sizeLocal = {0.35f, 0.35f};
+    if (canMove(nextPos, sizeLocal))
     {
         player->pos = nextPos;
     }
@@ -460,14 +435,14 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     enemyManager.Update(dt, player->pos);
 
     if (uiFlashTimer > 0.0f)
-{
-    uiFlashTimer -= dt;
-    if (uiFlashTimer <= 0.0f)
     {
-        overlayBmpCurrent = overlayBmpA; // back to normal UI
-        uiFlashTimer = 0.0f;
+        uiFlashTimer -= dt;
+        if (uiFlashTimer <= 0.0f)
+        {
+            overlayBmpCurrent = overlayBmpA;
+            uiFlashTimer = 0.0f;
+        }
     }
-}
 
     // Draw
     pRenderTarget->BeginDraw();
@@ -475,38 +450,36 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         pRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
         pRenderTarget->Clear(D2D1::ColorF(D2D1::ColorF::Black));
 
+        // draw ceiling and floor as two rects
         const float halfH = rtSize.height * 0.5f;
         pRenderTarget->FillRectangle(D2D1::RectF(0, 0, rtSize.width, halfH), ceilBrush);
         pRenderTarget->FillRectangle(D2D1::RectF(0, halfH, rtSize.width, rtSize.height), floorBrush);
 
-        const float fov = 60.0f * (3.14159265f / 180.0f);
+        // raycasting
+        const float fov = 60.0f * (3.14159265f / 180.0f); // 60 degrees
         const float planeHalf = std::tan(fov * 0.5f);
-
         static std::vector<float> depthBuffer;
         depthBuffer.assign(width, 1e30f);
-
         std::fill(pixels.begin(), pixels.end(), 0x00);
 
         for (int x = 0; x < width; ++x)
         {
+            // camera space x in [-1,1]
             float camX = ((2.0f * x) / (float)width) - 1.0f;
-
+            // ray direction
             D2D_POINT_2F dir = {
                 std::cos(player->angle) + planeHalf * camX * (-std::sin(player->angle)),
                 std::sin(player->angle) + planeHalf * camX * (std::cos(player->angle))};
 
+            // DDA setup
             int mapX = (int)player->pos.x;
             int mapY = (int)player->pos.y;
-
             float sideDistX;
             float sideDistY;
-
             float deltaDistX = (dir.x == 0.0f) ? 1e30f : std::fabs(1.0f / dir.x);
             float deltaDistY = (dir.y == 0.0f) ? 1e30f : std::fabs(1.0f / dir.y);
-
             int stepX;
             int stepY;
-
             int hit = 0;
             int side = 0;
             int tile = 0;
@@ -521,7 +494,6 @@ SDL_AppResult SDL_AppIterate(void *appstate)
                 stepX = 1;
                 sideDistX = (mapX + 1.0f - player->pos.x) * deltaDistX;
             }
-
             if (dir.y < 0)
             {
                 stepY = -1;
@@ -561,10 +533,15 @@ SDL_AppResult SDL_AppIterate(void *appstate)
                 }
             }
 
-            float perpWallDist = (side == 0) ? (sideDistX - deltaDistX) : (sideDistY - deltaDistY);
+            float perpWallDist;
+            if (side == 0)
+                perpWallDist = (sideDistX - deltaDistX);
+            else
+                perpWallDist = (sideDistY - deltaDistY);
             if (perpWallDist < 0.0001f)
                 perpWallDist = 0.0001f;
 
+            // line height
             int lineHeight = (int)(height / perpWallDist);
             int drawStart = -lineHeight / 2 + (int)halfH;
             int drawEnd = lineHeight / 2 + (int)halfH;
@@ -573,8 +550,10 @@ SDL_AppResult SDL_AppIterate(void *appstate)
             if (drawEnd >= height)
                 drawEnd = height - 1;
 
+            // wall texture
             int wallTextureNum = (int)wallTypes.find(tile)->second;
 
+            // calculate value of wallX
             double wallX;
             if (side == 0)
                 wallX = player->pos.y + perpWallDist * dir.y;
@@ -582,19 +561,24 @@ SDL_AppResult SDL_AppIterate(void *appstate)
                 wallX = player->pos.x + perpWallDist * dir.x;
             wallX -= floor(wallX);
 
+            // x coordinate on the texture
             int texX = int(wallX * double(texture_wall_size));
             if (side == 0 && dir.x > 0)
                 texX = texture_wall_size - texX - 1;
             if (side == 1 && dir.y < 0)
                 texX = texture_wall_size - texX - 1;
 
+            // How much to increase the texture coordinate per screen pixel
             double step = 1.0 * double(texture_wall_size) / lineHeight;
+            // Starting texture coordinate
             double texPos = (drawStart - height / 2 + lineHeight / 2) * step;
 
+            // shade by side
             float shade = (side == 1) ? 0.75f : 1.0f;
 
-            texture_coords.x = texX + (wallTextureNum % 4) * texture_wall_size;
+            texture_coords.x = texX + (wallTextureNum % 4) * texture_wall_size; // this should be wallTextureNum % 4 * texture_wall_size
 
+            // for (int y = drawStart; y < drawEnd; y++)
             for (int y = 0; y < height; y++)
             {
                 int currentPixel = (y * width + x) * 4;
@@ -608,10 +592,11 @@ SDL_AppResult SDL_AppIterate(void *appstate)
                     continue;
                 }
 
+                // Cast the texture coordinate to integer, and mask with (texHeight - 1) in case of overflow
                 int texY = (int)texPos & (texture_wall_size - 1);
                 texPos += step;
 
-                texture_coords.y = texY + (wallTextureNum / 4) * texture_wall_size;
+                texture_coords.y = texY + (wallTextureNum / 4) * texture_wall_size; // this should be wallTextureNum / 4 * texture_wall_size
 
                 SDL_Color pixelColor = GetPixelColor(textureBitmap, texture_coords.x, texture_coords.y);
 
@@ -620,29 +605,26 @@ SDL_AppResult SDL_AppIterate(void *appstate)
                 pixels[currentPixel + 2] = BYTE(pixelColor.r * shade);
                 pixels[currentPixel + 3] = 0xFF;
             }
-
             depthBuffer[x] = perpWallDist;
         }
 
         bitmap->CopyFromMemory(nullptr, pixels.data(), width * 4);
+        pRenderTarget->DrawBitmap(
+            bitmap,
+            D2D1::RectF(0, 0, (FLOAT)width, (FLOAT)height));
 
-        pRenderTarget->DrawBitmap(bitmap, D2D1::RectF(0, 0, (FLOAT)width, (FLOAT)height));
-
-        enemyManager.RenderBillboards(pRenderTarget, enemyBrush, textureBitmap, depthBuffer,
-                                      width, height, halfH, player->pos, player->angle, planeHalf);
+        enemyManager.RenderBillboards(pRenderTarget, enemyBrush, textureBitmap, depthBuffer, width, height, halfH, player->pos, player->angle, planeHalf);
 
         pRenderTarget->DrawEllipse(crosshair, enemyBrush);
         pRenderTarget->DrawRectangle(crossCenter, enemyBrush);
 
-        // UI overlay
         if (overlayBmpCurrent)
         {
-            D2D1_SIZE_F uiSize = overlayBmpCurrent->GetSize();
-            FLOAT x = 10.0f, y = 10.0f;
             D2D1_RECT_F dst = D2D1::RectF(0, 0, (FLOAT)width, (FLOAT)height);
             pRenderTarget->DrawBitmap(overlayBmpCurrent, dst, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
         }
     }
+
     pRenderTarget->EndDraw();
 
     return SDL_APP_CONTINUE;
@@ -668,7 +650,6 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
         SDL_DestroySurface(textureBitmap);
         textureBitmap = nullptr;
     }
-
     if (renderer)
     {
         SDL_DestroyRenderer(renderer);
@@ -683,11 +664,41 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
     delete player;
     player = nullptr;
 
-    SafeRelease(bitmap);
-    SafeRelease(ceilBrush);
-    SafeRelease(floorBrush);
-    SafeRelease(wallBrush);
-    SafeRelease(enemyBrush);
-    SafeRelease(pRenderTarget);
-    SafeRelease(pFactory);
+    // delete &enemyManager; // crash risk
+
+    if (bitmap)
+    {
+        bitmap->Release();
+        bitmap = nullptr;
+    }
+    if (ceilBrush)
+    {
+        ceilBrush->Release();
+        ceilBrush = nullptr;
+    }
+    if (floorBrush)
+    {
+        floorBrush->Release();
+        floorBrush = nullptr;
+    }
+    if (wallBrush)
+    {
+        wallBrush->Release();
+        wallBrush = nullptr;
+    }
+    if (pRenderTarget)
+    {
+        pRenderTarget->Release();
+        pRenderTarget = nullptr;
+    }
+    if (pFactory)
+    {
+        pFactory->Release();
+        pFactory = nullptr;
+    }
+    if (enemyBrush)
+    {
+        enemyBrush->Release();
+        enemyBrush = nullptr;
+    }
 }
