@@ -333,7 +333,8 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 
     if (event->type == SDL_EVENT_MOUSE_MOTION)
     {
-        const float sensitivity = 0.0025f;
+        // mouse horizontal movement rotates view
+        const float sensitivity = 0.0025f; // radians per pixel
         player->angle += event->motion.xrel * sensitivity;
     }
 
@@ -343,10 +344,12 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 /* This function runs once per frame, and is the heart of the program. */
 SDL_AppResult SDL_AppIterate(void *appstate)
 {
+    // delta time
     const Uint64 now = SDL_GetTicks();
     dt = (float)(now - ticks_prev) / 1000.0f;
     ticks_prev = now;
 
+    // movement relative to facing
     D2D_POINT_2F forward = {std::cos(player->angle), std::sin(player->angle)};
     D2D_POINT_2F right = {-std::sin(player->angle), std::cos(player->angle)};
 
@@ -368,26 +371,35 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         // Toggle overlay ONCE per click (edge detect)
         if (leftDown && !prevLeftDown)
         {
+
             overlayBmpCurrent = overlayBmpB; // show POW
             uiFlashTimer = uiFlashDuration;  // start countdown
         }
         prevLeftDown = leftDown;
 
-        // Your existing shooting logic (kept)
         if (leftDown)
         {
+            // 1. Calculate the ray direction for the center of the screen
+            // The center ray is simply the player's view direction.
             D2D_POINT_2F rayDir = {std::cos(player->angle), std::sin(player->angle)};
             D2D_POINT_2F hitPos;
-            const float enemyCheckProximity = 0.5f;
+            const float enemyCheckProximity = 0.5f; // A small radius around the hit point to confirm the enemy's center is close
+
+            // 2. Check for an enemy hit along the ray
+            // The wall rendering already calculates the perpWallDist for the center ray (x=width/2, camX=0).
+            // We use the new checkEnemyHit for accurate sprite hit.
 
             float hitDistance = checkEnemyHit(player->pos, rayDir, hitPos, enemyManager);
 
+            // 3. Compare hit distance with the closest enemy.
+            // A basic check to see if an enemy was hit (hitDistance is not the initial 1e30f value).
             if (hitDistance < 1e30f)
             {
+
                 if (enemyManager.RemoveEnemyAt(hitPos, enemyCheckProximity))
                 {
                     SDL_Log("Enemy destroyed at distance: %f", hitDistance);
-
+                    // If all targets are gone, mark game clear, stop spawning, and destroy all enemies
                     if (enemyManager.CountTargets() == 0)
                     {
                         gameClear = true;
@@ -398,7 +410,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
                 }
             }
         }
-
+        // optional keyboard rotation
         if (key_states[SDL_SCANCODE_W])
         {
             desired.x += forward.x;
@@ -451,6 +463,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     D2D_POINT_2F nextPos = {player->pos.x + desired.x * player->moveSpeed * dt,
                             player->pos.y + desired.y * player->moveSpeed * dt};
 
+    // collision: player radius ~0.25 tiles
     D2D_POINT_2F playerSize = {0.35f, 0.35f};
     if (canMove(nextPos, playerSize))
     {
@@ -460,18 +473,19 @@ SDL_AppResult SDL_AppIterate(void *appstate)
     enemyManager.Update(dt, player->pos);
 
     if (uiFlashTimer > 0.0f)
-{
-    uiFlashTimer -= dt;
-    if (uiFlashTimer <= 0.0f)
     {
-        overlayBmpCurrent = overlayBmpA; // back to normal UI
-        uiFlashTimer = 0.0f;
+        uiFlashTimer -= dt;
+        if (uiFlashTimer <= 0.0f)
+        {
+            overlayBmpCurrent = overlayBmpA; // back to normal UI
+            uiFlashTimer = 0.0f;
+        }
     }
-}
 
     // Draw
     pRenderTarget->BeginDraw();
     {
+        // draw ceiling and floor as two rects
         pRenderTarget->SetTransform(D2D1::Matrix3x2F::Identity());
         pRenderTarget->Clear(D2D1::ColorF(D2D1::ColorF::Black));
 
@@ -479,7 +493,8 @@ SDL_AppResult SDL_AppIterate(void *appstate)
         pRenderTarget->FillRectangle(D2D1::RectF(0, 0, rtSize.width, halfH), ceilBrush);
         pRenderTarget->FillRectangle(D2D1::RectF(0, halfH, rtSize.width, rtSize.height), floorBrush);
 
-        const float fov = 60.0f * (3.14159265f / 180.0f);
+        // raycasting
+        const float fov = 60.0f * (3.14159265f / 180.0f); // 60 degrees
         const float planeHalf = std::tan(fov * 0.5f);
 
         static std::vector<float> depthBuffer;
@@ -489,12 +504,13 @@ SDL_AppResult SDL_AppIterate(void *appstate)
 
         for (int x = 0; x < width; ++x)
         {
+            // camera space x in [-1,1]
             float camX = ((2.0f * x) / (float)width) - 1.0f;
-
+            // ray direction
             D2D_POINT_2F dir = {
                 std::cos(player->angle) + planeHalf * camX * (-std::sin(player->angle)),
                 std::sin(player->angle) + planeHalf * camX * (std::cos(player->angle))};
-
+            // DDA setup
             int mapX = (int)player->pos.x;
             int mapY = (int)player->pos.y;
 
@@ -564,7 +580,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
             float perpWallDist = (side == 0) ? (sideDistX - deltaDistX) : (sideDistY - deltaDistY);
             if (perpWallDist < 0.0001f)
                 perpWallDist = 0.0001f;
-
+            // line height
             int lineHeight = (int)(height / perpWallDist);
             int drawStart = -lineHeight / 2 + (int)halfH;
             int drawEnd = lineHeight / 2 + (int)halfH;
@@ -572,9 +588,9 @@ SDL_AppResult SDL_AppIterate(void *appstate)
                 drawStart = 0;
             if (drawEnd >= height)
                 drawEnd = height - 1;
-
+            // wall texture
             int wallTextureNum = (int)wallTypes.find(tile)->second;
-
+            // calculate value of wallX
             double wallX;
             if (side == 0)
                 wallX = player->pos.y + perpWallDist * dir.y;
@@ -582,19 +598,22 @@ SDL_AppResult SDL_AppIterate(void *appstate)
                 wallX = player->pos.x + perpWallDist * dir.x;
             wallX -= floor(wallX);
 
+            // x coordinate on the texture
             int texX = int(wallX * double(texture_wall_size));
             if (side == 0 && dir.x > 0)
                 texX = texture_wall_size - texX - 1;
             if (side == 1 && dir.y < 0)
                 texX = texture_wall_size - texX - 1;
-
+            // How much to increase the texture coordinate per screen pixel
             double step = 1.0 * double(texture_wall_size) / lineHeight;
+            // Starting texture coordinate
             double texPos = (drawStart - height / 2 + lineHeight / 2) * step;
-
+            // shade by side
             float shade = (side == 1) ? 0.75f : 1.0f;
 
-            texture_coords.x = texX + (wallTextureNum % 4) * texture_wall_size;
+            texture_coords.x = texX + (wallTextureNum % 4) * texture_wall_size; // this should be wallTextureNum % 4 * texture_wall_size
 
+            // for (int y = drawStart; y < drawEnd; y++)
             for (int y = 0; y < height; y++)
             {
                 int currentPixel = (y * width + x) * 4;
@@ -607,7 +626,7 @@ SDL_AppResult SDL_AppIterate(void *appstate)
                     pixels[currentPixel + 3] = 0x00;
                     continue;
                 }
-
+                // Cast the texture coordinate to integer, and mask with (texHeight - 1) in case of overflow
                 int texY = (int)texPos & (texture_wall_size - 1);
                 texPos += step;
 
@@ -682,7 +701,8 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
 
     delete player;
     player = nullptr;
-
+    
+    // delete &enemyManager; // crash risk
     SafeRelease(bitmap);
     SafeRelease(ceilBrush);
     SafeRelease(floorBrush);
