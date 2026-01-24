@@ -179,7 +179,11 @@ void EnemyManager::RenderBillboards(ID2D1HwndRenderTarget *rt,
                     int texY = ((d * 128) / spriteHeight) / 256;
 
                     int currentPixel = (sy * width + sx) * 4;
-                    SDL_Color pixelColor = GetPixelColor(mainText, texX, texY + 384);
+
+                    SDL_Color pixelColor;
+                    if(e.type == EnemyType::Walker)
+                        pixelColor = GetPixelColor(mainText, texX, texY + 384);
+                    else pixelColor = GetPixelColor(mainText, texX + 128, texY + 384);
 
                     if (pixelColor.b > 0xEE && pixelColor.r > 0xEE)
                     {

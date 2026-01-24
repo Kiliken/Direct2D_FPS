@@ -17,6 +17,7 @@ add_executable(App
 	src/EnemyManager.cpp
 	src/Enemy.cpp
 	src/Player.h
+	src/Pathfinding.cpp
 
 
 	# ImGui core
