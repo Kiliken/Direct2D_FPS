@@ -18,18 +18,6 @@ add_executable(App
 	src/Enemy.cpp
 	src/Player.h
 	src/Pathfinding.cpp
-
-
-	# ImGui core
-	dep/include/imgui/imgui.cpp
-	dep/include/imgui/imgui_draw.cpp
-	dep/include/imgui/imgui_tables.cpp
-	dep/include/imgui/imgui_widgets.cpp
-	dep/include/imgui/imgui_demo.cpp
-	
-	# ImGui backends
-	dep/include/imgui/imgui_impl_sdl3.cpp
-    dep/include/imgui/imgui_impl_dx11.cpp
 )
 
 # Include Directories
@@ -58,6 +46,5 @@ target_link_libraries(App PRIVATE
 	odbc32
 	odbccp32
 	SDL3
-	d3d11
 	D2d1
 )

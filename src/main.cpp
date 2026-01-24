@@ -263,7 +263,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     pRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 0.0f, 0.0f, 1.0f), &enemyBrush);
 
     // Load wall texture atlas (still BMP via SDL, since you sample pixels from it)
-    textureBitmap = SDL_LoadBMP("../Assets/walls.bmp");
+    textureBitmap = SDL_LoadBMP("../../Assets/walls.bmp");
     if (!textureBitmap)
     {
         SDL_Log("Failed to load walls.bmp: %s", SDL_GetError());
@@ -295,12 +295,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 
     // ------------------------------------------------------------
     // Load overlay PNGs via WIC
-    overlayBmpA = LoadD2DBitmapFromFile_WIC(L"../Assets/ui_a.png");
-    overlayBmpB = LoadD2DBitmapFromFile_WIC(L"../Assets/ui_b.png");
+    overlayBmpA = LoadD2DBitmapFromFile_WIC(L"../../Assets/ui_a.png");
+    overlayBmpB = LoadD2DBitmapFromFile_WIC(L"../../Assets/ui_b.png");
 
     if (!overlayBmpA || !overlayBmpB)
     {
-        SDL_Log("Failed to load overlay PNGs. Ensure ../Assets/ui_a.png and ../Assets/ui_b.png exist.");
+        SDL_Log("Failed to load overlay PNGs. Ensure ../../Assets/ui_a.png and ../../Assets/ui_b.png exist.");
         return SDL_APP_FAILURE;
     }
 
