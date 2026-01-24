@@ -1,4 +1,5 @@
 
+
 #define SDL_MAIN_USE_CALLBACKS 1 /* use the callbacks instead of main() */
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -36,6 +37,7 @@ static Player *player = NULL;
 static EnemyManager enemyManager;
 static Uint64 ticks_prev = 0;
 static float dt = 0.0f;
+static bool gameClear = false;
 
 SDL_Surface *textureBitmap = NULL;
 
@@ -122,6 +124,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
         &bitmap);
 
     enemyManager.CreateBillboardRenderer(pRenderTarget, width, height);
+
+    enemyManager.InitializeTargets(5, player->pos);
 
     crosshair = D2D1::Ellipse(
         D2D1::Point2F((FLOAT)(width / 2), (FLOAT)(height / 2)),
@@ -240,6 +244,15 @@ SDL_AppResult SDL_AppIterate(void *appstate)
                 if (enemyManager.RemoveEnemyAt(hitPos, enemyCheckProximity))
                 {
                     SDL_Log("Enemy destroyed at distance: %f", hitDistance);
+
+                    // If all targets are gone, mark game clear, stop spawning, and destroy all enemies
+                    if (enemyManager.CountTargets() == 0)
+                    {
+                        gameClear = true;
+                        enemyManager.SetSpawningEnabled(false);
+                        enemyManager.DestroyAllEnemies();
+                        SDL_Log("Game Clear: All targets destroyed. Enemies stopped and cleared.");
+                    }
                 }
             }
         }

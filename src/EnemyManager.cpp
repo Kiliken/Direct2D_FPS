@@ -17,28 +17,30 @@ void EnemyManager::Reset()
 {
     enemies.clear();
     spawnAccumulator = 0.0f;
+    spawningEnabled = true;
 }
 
-// Try to spawn a new enemy
-void EnemyManager::TrySpawn(const D2D_POINT_2F &playerPos)
+// New: helper to find a random free floor not near player or other enemies
+bool EnemyManager::FindRandomFreeFloor(const D2D_POINT_2F &playerPos, D2D_POINT_2F &outPos)
 {
-    if ((int)enemies.size() >= maxEnemies)
-        return;
-    // find a random floor tile not near player
     std::uniform_int_distribution<int> distX(1, mapWidth - 2);
     std::uniform_int_distribution<int> distY(1, mapHeight - 2);
+
     for (int attempts = 0; attempts < 200; ++attempts)
     {
         int tx = distX(rng);
         int ty = distY(rng);
         if (getTile(tx, ty) != '.')
             continue;
+
         D2D_POINT_2F p = {(float)tx + 0.5f, (float)ty + 0.5f};
+
         float dx = p.x - playerPos.x;
         float dy = p.y - playerPos.y;
         float d2 = dx * dx + dy * dy;
         if (d2 < 9.0f)
             continue; // too close (less than 3 tiles)
+
         bool occupied = false;
         for (auto &e : enemies)
         {
@@ -50,8 +52,39 @@ void EnemyManager::TrySpawn(const D2D_POINT_2F &playerPos)
         }
         if (occupied)
             continue;
-        enemies.emplace_back(p);
-        break;
+
+        outPos = p;
+        return true;
+    }
+    return false;
+}
+
+// New: initialize stationary targets at random valid positions
+void EnemyManager::InitializeTargets(int count, const D2D_POINT_2F &playerPos)
+{
+    for (int i = 0; i < count; ++i)
+    {
+        D2D_POINT_2F pos;
+        if (FindRandomFreeFloor(playerPos, pos))
+        {
+            enemies.emplace_back(Enemy(pos, EnemyType::Target));
+        }
+    }
+}
+
+// Try to spawn a new enemy (walker)
+void EnemyManager::TrySpawn(const D2D_POINT_2F &playerPos)
+{
+    if (!spawningEnabled)
+        return;
+
+    if ((int)enemies.size() >= maxEnemies)
+        return;
+
+    D2D_POINT_2F p;
+    if (FindRandomFreeFloor(playerPos, p))
+    {
+        enemies.emplace_back(Enemy(p, EnemyType::Walker));
     }
 }
 
@@ -59,7 +92,7 @@ void EnemyManager::TrySpawn(const D2D_POINT_2F &playerPos)
 void EnemyManager::Update(float dt, const D2D_POINT_2F &playerPos)
 {
     spawnAccumulator += dt;
-    if (spawnAccumulator >= 5.0f)
+    if (spawningEnabled && spawnAccumulator >= 5.0f)
     {
         spawnAccumulator = 0.0f;
         TrySpawn(playerPos);
@@ -67,7 +100,7 @@ void EnemyManager::Update(float dt, const D2D_POINT_2F &playerPos)
 
     for (auto &e : enemies)
     {
-        e.Update(dt);
+        e.Update(dt, playerPos);
         e.TryAttack(playerPos);
     }
 }
@@ -190,4 +223,30 @@ bool EnemyManager::RemoveEnemyAt(const D2D_POINT_2F &worldPos, float proximity)
         return true; // Enemy was removed
     }
     return false; // No enemy removed
+}
+
+// New: manage spawning and targets
+void EnemyManager::SetSpawningEnabled(bool enabled)
+{
+    spawningEnabled = enabled;
+}
+
+void EnemyManager::DestroyAllEnemies()
+{
+    enemies.clear();
+    // Also clear the billboard buffer so nothing remains drawn this frame
+    std::fill(enemyBmpPx.begin(), enemyBmpPx.end(), 0x00);
+}
+
+int EnemyManager::CountTargets() const
+{
+    int cnt = 0;
+    for (const auto &e : enemies)
+    {
+        if (e.type == EnemyType::Target)
+            ++cnt;
+    }
+
+    SDL_Log("Target count: %d", cnt);
+    return cnt;
 }
